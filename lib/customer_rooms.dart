@@ -29,8 +29,7 @@ class Property {
   });
 }
 
-// Hardcoded Properties Data
-final List<Property> hardcodedProperties = [    //TODO: Replace with API data fetching
+final List<Property> hardcodedProperties = [    //TODO: Replace with real data from backend
   Property(
     id: '1',
     name: 'Seaside Villa',
