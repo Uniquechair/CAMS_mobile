@@ -14,12 +14,42 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   String _selectedStatus = 'All Statuses';
   bool _isCalendarView = true;
   DateTime _selectedDate = DateTime.now();
+  String _searchQuery = '';
+  
+    // Hardcoded booking data
+    final List<Map<String, dynamic>> _bookings = [
+      {
+        'property': 'Sunrise Villa',
+        'customer': 'Alice',
+        'start': DateTime(2025, 11, 5),
+        'end': DateTime(2025, 11, 8),
+        'price': 'RM 3.3',
+        'status': 'Accepted',
+      },
+      {
+        'property': 'Blue Lagoon',
+        'customer': 'Bob',
+        'start': DateTime(2025, 11, 5),
+        'end': DateTime(2025, 11, 6),
+        'price': 'RM 2.0',
+        'status': 'Pending',
+      },
+      {
+        'property': 'Green Cottage',
+        'customer': 'Charlie',
+        'start': DateTime(2025, 11, 7),
+        'end': DateTime(2025, 11, 9),
+        'price': 'RM 4.5',
+        'status': 'Rejected',
+      },
+    ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFACCBFF),
+      backgroundColor: const Color(0xFFE7F0FF),
+      drawer: _buildDrawer(),
       appBar: _buildAppBar(),
       body: SingleChildScrollView(
         child: Padding(
@@ -43,11 +73,13 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: const Color(0xFF649EFF),
+      backgroundColor: const Color(0xFF649EFF), // Admin color
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.menu, color: Colors.white),
-        onPressed: () {},
+        onPressed: () {
+          _scaffoldKey.currentState?.openDrawer();
+        },
       ),
       title: Row(
         children: [
@@ -55,7 +87,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                colors: [Color(0xFF649EFF), Color(0xFF649EFF)],
               ),
               borderRadius: BorderRadius.circular(12),
             ),
@@ -102,8 +134,13 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
         ],
       ),
       child: TextField(
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.trim();
+          });
+        },
         decoration: InputDecoration(
-          hintText: 'Search reservations...',
+          hintText: 'Search by property or customer name...',
           hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
           prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
           border: OutlineInputBorder(
@@ -170,7 +207,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isCalendarView ? const Color(0xFF8B5CF6) : Colors.white,
+              backgroundColor: _isCalendarView ? const Color(0xFF0077B6) : Colors.white,
               foregroundColor: _isCalendarView ? Colors.white : const Color(0xFF64748B),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
@@ -193,7 +230,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: !_isCalendarView ? const Color(0xFF8B5CF6) : Colors.white,
+              backgroundColor: !_isCalendarView ? const Color(0xFF0077B6) : Colors.white,
               foregroundColor: !_isCalendarView ? Colors.white : const Color(0xFF64748B),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
@@ -327,37 +364,52 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               return const SizedBox.shrink();
             }
             final day = index - startingWeekday + 1;
-            final isToday = day == DateTime.now().day &&
-                _selectedDate.month == DateTime.now().month &&
-                _selectedDate.year == DateTime.now().year;
+            final currentDate = DateTime.now();
+            final isToday = day == currentDate.day &&
+                _selectedDate.month == currentDate.month &&
+                _selectedDate.year == currentDate.year;
+            final isSelected = day == _selectedDate.day &&
+                _selectedDate.month == _selectedDate.month &&
+                _selectedDate.year == _selectedDate.year;
 
-            return Container(
-              margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Center(
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: isToday ? const Color(0xFF8B5CF6) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$day',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isToday ? Colors.white : const Color(0xFF1E293B),
-                        fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+              return Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month, day);
+                      });
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: isSelected 
+                            ? const Color(0xFF649EFF) 
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$day',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF1E293B),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            );
+              );
           },
         ),
       ],
@@ -400,6 +452,31 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   }
 
   Widget _buildTableView() {
+    // Filter bookings for selected date, status and search query
+    final filteredBookings = _bookings.where((booking) {
+      // First filter by date
+      final start = booking['start'] as DateTime;
+      final end = booking['end'] as DateTime;
+      final isDateMatch = _selectedDate.isAtSameMomentAs(start) ||
+          (_selectedDate.isAfter(start) && _selectedDate.isBefore(end)) ||
+          _selectedDate.isAtSameMomentAs(end);
+      
+      // Then filter by status
+      final isStatusMatch = _selectedStatus == 'All Statuses' || 
+          booking['status'] == _selectedStatus;
+
+      // Then filter by search query
+      final property = (booking['property'] as String).toLowerCase();
+      final customer = (booking['customer'] as String).toLowerCase();
+      final searchTerm = _searchQuery.toLowerCase();
+      final isSearchMatch = _searchQuery.isEmpty ||
+          property.contains(searchTerm) ||
+          customer.contains(searchTerm);
+
+      // All conditions must match
+      return isDateMatch && isStatusMatch && isSearchMatch;
+    }).toList();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -413,16 +490,15 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
         ],
       ),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildReservationCard(),
-          _buildReservationCard(),
-        ],
-      ),
+      child: filteredBookings.isEmpty
+          ? const Center(child: Text('No bookings for this date'))
+          : Column(
+              children: filteredBookings.map((booking) => _buildReservationCard(booking)).toList(),
+            ),
     );
   }
 
-  Widget _buildReservationCard() {
+  Widget _buildReservationCard(Map<String, dynamic> booking) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -446,29 +522,29 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Property Name',
-                        style: TextStyle(
+                        booking['property'],
+                        style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Customer Name',
-                        style: TextStyle(
+                        booking['customer'],
+                        style: const TextStyle(
                           color: Color(0xFF64748B),
                           fontSize: 13,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        '05-11-2025 - 08-11-2025',
-                        style: TextStyle(
+                        '${DateFormat('dd-MM-yyyy').format(booking['start'])} - ${DateFormat('dd-MM-yyyy').format(booking['end'])}',
+                        style: const TextStyle(
                           color: Color(0xFF64748B),
                           fontSize: 12,
                         ),
@@ -486,24 +562,32 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'RM 3.3',
-                  style: TextStyle(
+                Text(
+                  booking['price'],
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: Color(0xFF8B5CF6),
+                    color: Color(0xFF649EFF),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1FAE5),
+                    color: booking['status'] == 'Accepted'
+                        ? const Color(0xFFD1FAE5)
+                        : booking['status'] == 'Pending'
+                            ? const Color(0xFFFFF9C4)
+                            : const Color(0xFFFFCDD2),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Accepted',
+                  child: Text(
+                    booking['status'],
                     style: TextStyle(
-                      color: Color(0xFF065F46),
+                      color: booking['status'] == 'Accepted'
+                          ? const Color(0xFF065F46)
+                          : booking['status'] == 'Pending'
+                              ? const Color(0xFFFBBF24)
+                              : const Color(0xFFEF4444),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -547,14 +631,135 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     );
   }
 
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Container(
+        color: const Color(0xFF1E293B),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.supervised_user_circle, color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Moderator',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _buildDrawerItem(Icons.dashboard, 'Dashboard', true),
+                  _buildDrawerItem(Icons.people, 'Customer', false),
+                  _buildDrawerItem(Icons.apartment, 'PropertyListing', false),
+                  _buildDrawerItem(Icons.calendar_today, 'Reservation', false),
+                  _buildDrawerItem(Icons.receipt_long, 'BooknPayLog', false),
+                  _buildDrawerItem(Icons.history, 'AuditTrails', false),
+                  _buildDrawerItem(Icons.trending_up, 'Finance', false),
+                  _buildDrawerItem(Icons.person, 'Profile', false),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: () {},
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.logout),
+                    SizedBox(width: 8),
+                    Text(
+                      'Logout',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(IconData icon, String title, bool isSelected) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected ? const Color(0xFF8B5CF6) : Colors.transparent,
+          width: 2,
+        ),
+      ),
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: Colors.white,
+          size: 24,
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        onTap: () {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Navigating to $title')),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = _selectedIndex == index;
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
-            _selectedIndex = index;
-          });
+          if (index == 4) {
+            _scaffoldKey.currentState?.openDrawer();
+          } else {
+            setState(() {
+              _selectedIndex = index;
+            });
+          }
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(
@@ -564,14 +769,14 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                color: isSelected ? const Color(0xFF649EFF) : const Color(0xFF94A3B8),
                 size: 24,
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                  color: isSelected ? const Color(0xFF649EFF) : const Color(0xFF94A3B8),
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),

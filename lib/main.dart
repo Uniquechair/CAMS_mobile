@@ -1,18 +1,5 @@
 import 'package:flutter/material.dart';
-<<<<<<< Updated upstream
-import 'homepage.dart';
-// import 'moderator_dashboard.dart';
-// import 'admin_dashboard.dart';
-// import 'owner_dashboard.dart';
-=======
-// import 'homepage.dart';
-// import 'moderator_dashboard.dart';
-// import 'admin_dashboard.dart';
-// import 'owner_dashboard.dart';
-// import 'customer_rooms.dart';
-// import 'customer_rooms_not_login.dart';
-import 'admin_managebooking.dart'; // <-- fixed semicolon
->>>>>>> Stashed changes
+import 'admin_managebooking.dart';
 
 void main() {
   runApp(const CamsApp());
@@ -44,20 +31,7 @@ class CamsApp extends StatelessWidget {
         // (Intentionally no global cardTheme; we style Cards locally in the page)
         useMaterial3: true,
       ),
-<<<<<<< Updated upstream
-      home: const HomePage(),
-      // home: const AdminDashboard(),
-      // home: const ModeratorDashboard(),
-      // home: const OwnerDashboard(),
-=======
-      // home: const HomePage(),
-      // home: const AdminDashboard(),
-      // home: const ModeratorDashboard(),
-      // home: const OwnerDashboard(),
-      // home: const RoomsPage(),
-      // home: const CustomerRoomsNotLogin(),
-      home: const AdminManageBooking(), // <-- launch this page directly
->>>>>>> Stashed changes
+      home: const AdminManageBooking(),
     );
   }
 }
