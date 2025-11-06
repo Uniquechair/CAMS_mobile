@@ -31,7 +31,7 @@ class CamsApp extends StatelessWidget {
         // (Intentionally no global cardTheme; we style Cards locally in the page)
         useMaterial3: true,
       ),
-      home: const AdminUserManagementPage(),
+      home: const AdminUserManagementPage(viewerRole: AppRole.admin),
     );
   }
 }
