@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'admin_managebooking.dart';
+import 'admin_usermanagement.dart';
 
 void main() {
   runApp(const CamsApp());
@@ -31,7 +31,7 @@ class CamsApp extends StatelessWidget {
         // (Intentionally no global cardTheme; we style Cards locally in the page)
         useMaterial3: true,
       ),
-      home: const AdminManageBooking(),
+      home: const AdminUserManagementPage(),
     );
   }
 }
