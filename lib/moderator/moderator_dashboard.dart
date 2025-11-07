@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import '../services/session.dart';
+import '../services/rbac_service.dart';
+import '../app.dart';
+import '../shared_admin_moderator/manage_service.dart';
+import '../api.dart' as api;
 
 class ModeratorDashboard extends StatefulWidget {
   const ModeratorDashboard({super.key});
-
+  static const String routeName = '/moderator';
+  
   @override
   State<ModeratorDashboard> createState() => _ModeratorDashboardState();
 }
@@ -10,12 +16,296 @@ class ModeratorDashboard extends StatefulWidget {
 class _ModeratorDashboardState extends State<ModeratorDashboard> {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  String? _currentUserRole;
+  
+  // Dashboard statistics
+  int _totalUsers = 0;
+  int _totalProperties = 0;
+  int _totalReservations = 0;
+  double _occupancyRate = 0.0;
+  double _revPAR = 0.0;
+  double _totalRevenue = 0.0;
+  double _guestSatisfaction = 0.0;
+  bool _isLoadingStats = false;
+
+  void _openManageServices() {
+    final nav = appNavigatorKey.currentState;
+    try {
+      // DEBUG
+      // ignore: avoid_print
+      print('MOD: _openManageServices invoked');
+      if (nav != null) {
+        // ignore: avoid_print
+        print('MOD: using appNavigatorKey.pushNamed(/manage-services)');
+        nav.pushNamed('/manage-services');
+      } else {
+        // ignore: avoid_print
+        print('MOD: appNavigatorKey null, using rootNavigator.pushNamed(/manage-services)');
+        Navigator.of(context, rootNavigator: true).pushNamed('/manage-services');
+      }
+    } catch (_) {
+      // ignore: avoid_print
+      print('MOD: named route failed, pushing ManageServicesPage directly');
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(builder: (_) => const ManageServicesPage()),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+    _loadDashboardStats();
+  }
+
+  Future<void> _loadUserRole() async {
+    final userRole = await Session.getUserGroup();
+    setState(() {
+      _currentUserRole = userRole;
+    });
+  }
+
+  // Helper method to extract list from different possible keys
+  List<dynamic> _extractList(Map<String, dynamic> data, List<String> possibleKeys) {
+    for (var key in possibleKeys) {
+      if (data[key] != null && data[key] is List) {
+        return List<dynamic>.from(data[key]);
+      }
+    }
+    return [];
+  }
+
+  // Helper method to parse double values
+  double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  Future<void> _loadDashboardStats() async {
+    setState(() {
+      _isLoadingStats = true;
+    });
+
+    print('═══════════════════════════════════════');
+    print('ModeratorDashboard: Loading statistics at ${DateTime.now()}');
+    print('═══════════════════════════════════════');
+
+    // Fetch Total Users
+    try {
+      final customersData = await api.fetchCustomers();
+      final customers = _extractList(customersData, ['customers', 'data', 'users']);
+      
+      final moderatorsData = await api.fetchModerators();
+      final moderators = _extractList(moderatorsData, ['moderators', 'data', 'users']);
+      
+      final adminsData = await api.fetchAdministrators();
+      final admins = _extractList(adminsData, ['administrators', 'admins', 'data', 'users']);
+      
+      // Moderator dashboard does NOT include owners in total user count
+      final totalUsers = customers.length + moderators.length + admins.length;
+      
+      if (mounted) {
+        setState(() {
+          _totalUsers = totalUsers;
+        });
+      }
+      print('ModeratorDashboard: Total users loaded: $_totalUsers');
+    } catch (error) {
+      print('ModeratorDashboard: Error fetching users: $error');
+    }
+
+    // Fetch Total Properties
+    try {
+      final propertiesData = await api.fetchPropertiesListingTable();
+      
+      int propertyCount = 0;
+      if (propertiesData['properties'] != null) {
+        propertyCount = (propertiesData['properties'] as List).length;
+      } else if (propertiesData['data'] != null) {
+        propertyCount = (propertiesData['data'] as List).length;
+      }
+      
+      if (mounted) {
+        setState(() {
+          _totalProperties = propertyCount;
+        });
+      }
+      print('ModeratorDashboard: Total properties loaded: $_totalProperties');
+    } catch (error) {
+      print('ModeratorDashboard: Error fetching properties: $error');
+    }
+
+    // Fetch Total Reservations
+    try {
+      final reservations = await api.fetchReservation();
+      
+      if (mounted) {
+        setState(() {
+          _totalReservations = reservations.length;
+        });
+      }
+      print('ModeratorDashboard: Total reservations loaded: $_totalReservations');
+    } catch (error) {
+      print('ModeratorDashboard: Error fetching reservations: $error');
+    }
+
+    // Fetch Occupancy Rate, RevPAR, Revenue, Guest Satisfaction
+    final userid = await Session.getUserId();
+    if (userid != null) {
+      try {
+        final occupancyData = await api.fetchOccupancyRate(userid);
+        
+        double occupancyRate = 0.0;
+        if (occupancyData['occupancyRate'] != null) {
+          occupancyRate = _parseDouble(occupancyData['occupancyRate']);
+        } else if (occupancyData['monthlyData'] != null && occupancyData['monthlyData'] is List) {
+          final monthlyData = occupancyData['monthlyData'] as List;
+          if (monthlyData.isNotEmpty) {
+            final latestMonth = monthlyData.last;
+            occupancyRate = _parseDouble(
+              latestMonth['occupancy_rate'] ?? 
+              latestMonth['occupancyRate'] ?? 
+              latestMonth['rate'] ?? 
+              latestMonth['value']
+            );
+          }
+        }
+        
+        if (mounted) {
+          setState(() {
+            _occupancyRate = occupancyRate;
+          });
+        }
+        print('ModeratorDashboard: Occupancy rate loaded: $_occupancyRate%');
+      } catch (error) {
+        print('ModeratorDashboard: Error fetching occupancy rate: $error');
+      }
+
+      try {
+        final revPARData = await api.fetchRevPAR(userid);
+        
+        double revPAR = 0.0;
+        if (revPARData['monthlyData'] != null && revPARData['monthlyData'] is List) {
+          final monthlyData = revPARData['monthlyData'] as List;
+          print('ModeratorDashboard: RevPAR monthlyData: $monthlyData');
+          if (monthlyData.isNotEmpty) {
+            final latestMonth = monthlyData.last;
+            print('ModeratorDashboard: RevPAR latestMonth: $latestMonth');
+            print('ModeratorDashboard: RevPAR latestMonth keys: ${(latestMonth as Map).keys.toList()}');
+            revPAR = _parseDouble(latestMonth['revpar']); // Backend uses 'revpar' (lowercase)
+            print('ModeratorDashboard: RevPAR raw value: ${latestMonth['revpar']}');
+          }
+        }
+        
+        if (mounted) {
+          setState(() {
+            _revPAR = revPAR;
+          });
+        }
+        print('ModeratorDashboard: RevPAR loaded: $_revPAR');
+      } catch (error) {
+        print('ModeratorDashboard: Error fetching RevPAR: $error');
+      }
+
+      try {
+        final financeData = await api.fetchFinance(userid);
+        
+        double revenue = 0.0;
+        if (financeData['monthlyData'] != null && financeData['monthlyData'] is List) {
+          final monthlyData = financeData['monthlyData'] as List;
+          if (monthlyData.isNotEmpty) {
+            // call backend api to get total revenue
+            final latestMonth = monthlyData.last;
+            revenue = _parseDouble(latestMonth['monthlyrevenue']);
+          }
+        }
+        
+        if (mounted) {
+          setState(() {
+            _totalRevenue = revenue;
+          });
+        }
+        print('ModeratorDashboard: Total revenue loaded: $_totalRevenue');
+      } catch (error) {
+        print('ModeratorDashboard: Error fetching revenue: $error');
+      }
+
+      try {
+        final satisfactionData = await api.fetchGuestSatisfactionScore(userid);
+        
+        double satisfaction = 0.0;
+        if (satisfactionData['monthlyData'] != null && satisfactionData['monthlyData'] is List) {
+          final monthlyData = satisfactionData['monthlyData'] as List;
+          if (monthlyData.isNotEmpty) {
+            // call backend api to get guest satisfaction score
+            final latestMonth = monthlyData.last;
+            satisfaction = _parseDouble(latestMonth['guest_satisfaction_score']);
+          }
+        }
+        
+        if (mounted) {
+          setState(() {
+            _guestSatisfaction = satisfaction;
+          });
+        }
+      } catch (error) {
+        print('ModeratorDashboard: Error fetching guest satisfaction: $error');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingStats = false;
+      });
+    }
+    
+    print('ModeratorDashboard: Statistics loading complete');
+  }
+
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Logout', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+    // Clear the session data
+    await Session.clear();
+    if (mounted) {
+      // Navigate back to the login screen and remove all previous routes
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFE8F0FF),
+      backgroundColor: const Color(0xFFE7F0FF),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -26,33 +316,35 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  colors: [Color(0xFF6366F1), Color(0xFF78AAFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(Icons.dashboard, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Moderator Dashboard',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Moderator Dashboard',
+                    style: TextStyle(
+                      color: Color(0xFF1E293B),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                Text(
-                  'Welcome, moderator',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
+                  Text(
+                    'Welcome, ${_currentUserRole != null ? RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -63,15 +355,14 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-            onPressed: () {},
+            onPressed: _handleLogout,
           ),
         ],
       ),
       drawer: _buildDrawer(),
       body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.delayed(const Duration(seconds: 1));
-        },
+        onRefresh: _loadDashboardStats,
+        color: const Color(0xFF0077B6),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -116,50 +407,50 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
       childAspectRatio: 0.9,
       children: [
         _buildStatCard(
-          title: 'Total Users',   // TODO: change to dynamic data
-          value: '7',
+          title: 'Total Users',
+          value: '$_totalUsers',
           icon: Icons.people_outline,
           iconColor: const Color(0xFF8B5CF6),
           route: '/users',
         ),
         _buildStatCard(
           title: 'Total Properties',
-          value: '0',
+          value: '$_totalProperties',
           icon: Icons.apartment,
           iconColor: const Color(0xFF10B981),
           route: '/properties',
         ),
         _buildStatCard(
           title: 'Total Reservations',
-          value: '0',
+          value: '$_totalReservations',
           icon: Icons.calendar_today,
           iconColor: const Color(0xFF3B82F6),
           route: '/reservations',
         ),
         _buildStatCard(
           title: 'Occupancy Rate',
-          value: '0.0%',
+          value: '${_occupancyRate.toStringAsFixed(1)}%',
           icon: Icons.trending_up,
           iconColor: const Color(0xFF8B5CF6),
           route: '/occupancy',
         ),
         _buildStatCard(
           title: 'RevPAR',
-          value: 'MYR 0.00',
+          value: 'MYR ${_revPAR.toStringAsFixed(2)}',
           icon: Icons.account_balance_wallet,
           iconColor: const Color(0xFF8B5CF6),
           route: '/revpar',
         ),
         _buildStatCard(
           title: 'Total Revenue',
-          value: 'MYR 0.00',
+          value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
           icon: Icons.attach_money,
           iconColor: const Color(0xFF10B981),
           route: '/revenue',
         ),
         _buildStatCard(
           title: 'Guest Satisfaction',
-          value: '0.0/5.0',
+          value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
           icon: Icons.bar_chart,
           iconColor: const Color(0xFFEF4444),
           route: '/satisfaction',
@@ -230,11 +521,18 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
               child: ElevatedButton(
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Navigating to $title page')),
+                    SnackBar(
+                      content: Text('Navigating to $title page', style: TextStyle(color: Colors.black)),
+                      backgroundColor: const Color(0xFF468FAF),
+                      duration: const Duration(seconds: 1),
+                    ),
                   );
+                  if (route == '/manage-services') {
+                    Navigator.pushNamed(context, '/manage-services');
+                  }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF84CC16),
+                  backgroundColor: const Color(0xFF0077B6),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -247,7 +545,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min, // let contents size themselves
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
+                    children: [
                       // ✅ Flexible is now INSIDE a Row (valid)
                       Flexible(
                         child: Text(
@@ -295,7 +593,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Booking Requests',
                       style: TextStyle(
@@ -319,7 +617,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
                   child: const Text(
                     'View All',
                     style: TextStyle(
-                      color: Color(0xFF8B5CF6),
+                      color: Color(0xFF78AAFF),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -355,7 +653,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         height: 48,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+            colors: [Color(0xFF6366F1), Color(0xFF78AAFF)],
           ),
           borderRadius: BorderRadius.circular(12),
         ),
@@ -423,7 +721,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        colors: [Color(0xFF6366F1), Color(0xFF78AAFF)],
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -459,9 +757,9 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: _handleLogout,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEF4444),
+                  backgroundColor: const Color(0xFF0077B6),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -471,7 +769,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
+                  children: [
                     Icon(Icons.logout),
                     SizedBox(width: 8),
                     Text(
@@ -498,7 +796,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected ? const Color(0xFF8B5CF6) : Colors.transparent,
+          color: isSelected ? const Color(0xFF78AAFF) : Colors.transparent,
           width: 2,
         ),
       ),
@@ -519,7 +817,11 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         onTap: () {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Navigating to $title')),
+            SnackBar(
+              content: Text('Navigating to $title', style: TextStyle(color: Colors.black)),
+              backgroundColor: const Color(0xFF468FAF),
+              duration: const Duration(seconds: 1),
+            ),
           );
         },
       ),
@@ -527,31 +829,60 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
   }
 
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
+    return SafeArea(
+      child: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _selectedIndex,
+        selectedItemColor: const Color(0xFF78AAFF),
+        unselectedItemColor: const Color(0xFF94A3B8),
+        onTap: (index) {
+          // ignore: avoid_print
+          print('MOD: BottomNavigationBar onTap index=' + index.toString());
+          if (index == 4) {
+            _scaffoldKey.currentState?.openDrawer();
+            return;
+          }
+          if (index == 3) {
+            // Profile page will fetch user data from API automatically
+            Navigator.of(context).pushNamed('/profile');
+            return;
+          }
+          if (index == 1) {
+            // Properties -> Manage Services
+            // ignore: avoid_print
+            print('MOD: BottomNavigationBar opening Manage Services');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening Manage Services...', style: TextStyle(color: Colors.black)),
+                backgroundColor: Color(0xFF468FAF),
+                duration: Duration(seconds: 1),
+              ),
+            );
+            // Try named route first, fallback to direct push
+            Future.microtask(() {
+              try {
+                Navigator.of(context).pushNamed('/manage-services');
+                // ignore: avoid_print
+                print('MOD: Navigation to /manage-services completed');
+              } catch (e) {
+                // ignore: avoid_print
+                print('MOD: Named route failed: $e, trying direct push');
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ManageServicesPage()),
+                );
+              }
+            });
+            return;
+          }
+          setState(() => _selectedIndex = index);
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.room_service), label: 'Properties'),
+          BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Bookings'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
         ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomNavItem(Icons.dashboard, 'Dashboard', 0),   // TODO: link the pages
-              _buildBottomNavItem(Icons.room_service, 'Properties', 1),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
-              _buildBottomNavItem(Icons.person, 'Profile', 3),
-              _buildBottomNavItem(Icons.more_horiz, 'More', 4),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -559,17 +890,33 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = _selectedIndex == index;
     return Expanded(
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () {
+          // ignore: avoid_print
+          print('MOD: bottom nav tapped index=' + index.toString());
           if (index == 4) {
             _scaffoldKey.currentState?.openDrawer();
+          } else if (index == 1) {
+            // Properties -> Manage Services
+            // ignore: avoid_print
+            print('MOD: navigating to Manage Services from bottom Properties');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening Manage Services...', style: TextStyle(color: Colors.black)),
+                backgroundColor: Color(0xFF468FAF),
+                duration: Duration(seconds: 1),
+              ),
+            );
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ManageServicesPage()),
+            );
           } else {
             setState(() {
               _selectedIndex = index;
             });
           }
         },
-        borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
@@ -577,14 +924,14 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                color: isSelected ? const Color(0xFF78AAFF) : const Color(0xFF94A3B8),
                 size: 24,
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                  color: isSelected ? const Color(0xFF78AAFF) : const Color(0xFF94A3B8),
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),

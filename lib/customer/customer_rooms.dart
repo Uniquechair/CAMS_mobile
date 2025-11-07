@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/session.dart';
+import '../api.dart' as api;
+import 'dart:convert';
 
 // Property Model
 class Property {
@@ -29,105 +32,7 @@ class Property {
   });
 }
 
-// Hardcoded Properties Data
-final List<Property> hardcodedProperties = [    //TODO: Replace with API data fetching
-  Property(
-    id: '1',
-    name: 'Seaside Villa',
-    location: 'Miami Beach, FL',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800',
-      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-      'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
-    ],
-    rating: 4.6,
-    reviews: 124,
-    bedrooms: 3,
-    guests: 6,
-    pricePerNight: 250,
-    amenities: ['WiFi', 'Parking', 'Pool'],
-    description: 'Beautiful seaside villa with stunning ocean views and private pool.',
-  ),
-  Property(
-    id: '2',
-    name: 'Mountain Cabin',
-    location: 'Aspen, CO',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1542718610-a1d656d1884c?w=800',
-      'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800',
-    ],
-    rating: 4.8,
-    reviews: 89,
-    bedrooms: 2,
-    guests: 4,
-    pricePerNight: 180,
-    amenities: ['WiFi', 'Parking', 'Fireplace'],
-    description: 'Cozy mountain cabin perfect for a peaceful retreat in nature.',
-  ),
-  Property(
-    id: '3',
-    name: 'City Apartment',
-    location: 'New York, NY',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800',
-      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800',
-    ],
-    rating: 4.5,
-    reviews: 156,
-    bedrooms: 1,
-    guests: 2,
-    pricePerNight: 150,
-    amenities: ['WiFi', 'Gym', 'Parking'],
-    description: 'Modern apartment in the heart of the city with easy access to attractions.',
-  ),
-  Property(
-    id: '4',
-    name: 'Beach House',
-    location: 'Malibu, CA',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=800',
-      'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800',
-    ],
-    rating: 4.9,
-    reviews: 201,
-    bedrooms: 4,
-    guests: 8,
-    pricePerNight: 350,
-    amenities: ['WiFi', 'Parking', 'Pool', 'Beach Access'],
-    description: 'Luxurious beach house with direct beach access and modern amenities.',
-  ),
-  Property(
-    id: '5',
-    name: 'Lake Cottage',
-    location: 'Lake Tahoe, CA',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1449158743715-0a90ebb6d2d8?w=800',
-    ],
-    rating: 4.7,
-    reviews: 78,
-    bedrooms: 2,
-    guests: 4,
-    pricePerNight: 200,
-    amenities: ['WiFi', 'Parking', 'Lake View'],
-    description: 'Charming cottage with beautiful lake views and peaceful surroundings.',
-  ),
-  Property(
-    id: '6',
-    name: 'Desert Retreat',
-    location: 'Scottsdale, AZ',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800',
-    ],
-    rating: 4.4,
-    reviews: 92,
-    bedrooms: 3,
-    guests: 6,
-    pricePerNight: 220,
-    amenities: ['WiFi', 'Parking', 'Pool', 'Hot Tub'],
-    description: 'Stunning desert retreat with panoramic views and luxury amenities.',
-  ),
-];
-
+// Properties data are fetch from backend API
 class RoomsPage extends StatefulWidget {
   const RoomsPage({super.key});
 
@@ -137,7 +42,10 @@ class RoomsPage extends StatefulWidget {
 
 class _RoomsPageState extends State<RoomsPage> {
   int _selectedIndex = 0;
-  List<Property> filteredProperties = hardcodedProperties;
+  List<Property> allProperties = [];
+  List<Property> filteredProperties = [];
+  bool _isLoading = true;
+  String? _errorMessage;
   
   // Filter variables
   String? selectedLocation;
@@ -145,6 +53,123 @@ class _RoomsPageState extends State<RoomsPage> {
   int adults = 1;
   int children = 0;
   RangeValues priceRange = const RangeValues(0, 500);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProperties();
+  }
+
+  Future<void> _loadProperties() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Call backend API to fetch properties
+      final propertiesData = await api.fetchPropertiesListingTable();
+      
+      List<Property> loadedProperties = [];
+      
+      if (propertiesData['properties'] != null) {
+        final propertiesList = propertiesData['properties'] as List;
+        
+        for (var propertyData in propertiesList) {
+          // Only include available properties
+          if (propertyData['propertystatus'] == 'Available') {
+            // Parse property images from backend
+            List<String> imageUrls = [];
+            if (propertyData['propertyimage'] != null) {
+              final images = propertyData['propertyimage'] as List;
+              for (var base64Image in images) {
+                if (base64Image != null && base64Image.toString().isNotEmpty) {
+                  imageUrls.add('data:image/jpeg;base64,$base64Image');
+                }
+              }
+            }
+            
+            // If no images, add a placeholder
+            if (imageUrls.isEmpty) {
+              imageUrls.add('https://via.placeholder.com/800x600?text=No+Image');
+            }
+
+            // Default amenities (backend doesn't have this data)
+            List<String> amenities = ['WiFi', 'Parking'];
+            
+            // Map backend data to Property model
+            loadedProperties.add(Property(
+              id: propertyData['propertyid'].toString(),
+              name: propertyData['propertyaddress'] ?? 'Property',
+              location: propertyData['nearbylocation'] ?? 'Unknown Location',
+              imageUrls: imageUrls,
+              rating: 4.5, // Default rating (backend doesn't have this)
+              reviews: 0, // Default reviews (backend doesn't have this)
+              bedrooms: int.tryParse(propertyData['propertybedtype']?.toString() ?? '1') ?? 1,
+              guests: int.tryParse(propertyData['propertyguestpaxno']?.toString() ?? '2') ?? 2,
+              pricePerNight: double.tryParse(propertyData['normalrate']?.toString() ?? '0') ?? 0,
+              amenities: amenities,
+              description: propertyData['propertydescription'] ?? 'No description available',
+            ));
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          allProperties = loadedProperties;
+          filteredProperties = loadedProperties;
+          _isLoading = false;
+        });
+      }
+      
+      print('CustomerRooms: Loaded ${loadedProperties.length} available properties');
+    } catch (error) {
+      print('CustomerRooms: Error loading properties: $error');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load properties. Please try again.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Logout', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      // Clear session data
+      await Session.clear();
+      
+      // Navigate to login screen
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    }
+  }
 
   void _showFilterSheet() {
     showModalBottomSheet(
@@ -157,7 +182,7 @@ class _RoomsPageState extends State<RoomsPage> {
 
   void _applyFilters() {
     setState(() {
-      filteredProperties = hardcodedProperties.where((property) {
+      filteredProperties = allProperties.where((property) {
         bool matchesPrice = property.pricePerNight >= priceRange.start &&
             property.pricePerNight <= priceRange.end;
         bool matchesGuests = property.guests >= (adults + children);
@@ -176,7 +201,7 @@ class _RoomsPageState extends State<RoomsPage> {
       adults = 1;
       children = 0;
       priceRange = const RangeValues(0, 500);
-      filteredProperties = hardcodedProperties;
+      filteredProperties = allProperties;
     });
     Navigator.pop(context);
   }
@@ -184,7 +209,7 @@ class _RoomsPageState extends State<RoomsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F0FF),
+      backgroundColor: const Color(0xFFE7F0FF),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -194,7 +219,7 @@ class _RoomsPageState extends State<RoomsPage> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  colors: [Color(0xFF6366F1), Color(0xFF92BBFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -227,11 +252,19 @@ class _RoomsPageState extends State<RoomsPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
-            onPressed: () {},
+            onPressed: () {
+              // TODO: Implement notifications
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Notifications feature coming soon!'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-            onPressed: () {},
+            onPressed: _handleLogout,
           ),
         ],
       ),
@@ -240,10 +273,39 @@ class _RoomsPageState extends State<RoomsPage> {
           _buildSearchBar(),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () async {
-                await Future.delayed(const Duration(seconds: 1));
-              },
-              child: ListView(
+              onRefresh: _loadProperties,
+              color: const Color(0xFF0077B6),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF0077B6),
+                      ),
+                    )
+                  : _errorMessage != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, size: 60, color: Color(0xFF64748B)),
+                              const SizedBox(height: 16),
+                              Text(
+                                _errorMessage!,
+                                style: const TextStyle(color: Color(0xFF64748B)),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _loadProperties,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0077B6),
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
                   Row(
@@ -267,7 +329,37 @@ class _RoomsPageState extends State<RoomsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  ...filteredProperties.map((property) => _buildPropertyCard(property)),
+                  if (filteredProperties.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          children: const [
+                            Icon(Icons.home_outlined, size: 80, color: Color(0xFF94A3B8)),
+                            SizedBox(height: 16),
+                            Text(
+                              'No properties available',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Try adjusting your filters or check back later',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF94A3B8),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ...filteredProperties.map((property) => _buildPropertyCard(property)),
                 ],
               ),
             ),
@@ -313,7 +405,7 @@ class _RoomsPageState extends State<RoomsPage> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  colors: [Color(0xFF6366F1), Color(0xFF92BBFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -494,7 +586,7 @@ class _RoomsPageState extends State<RoomsPage> {
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF8B5CF6),
+                                color: Color(0xFF92BBFF),
                               ),
                             ),
                             const TextSpan(
@@ -517,7 +609,7 @@ class _RoomsPageState extends State<RoomsPage> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
+                          backgroundColor: const Color(0xFF0077B6),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -546,7 +638,7 @@ class _RoomsPageState extends State<RoomsPage> {
   Widget _buildPropertyFeature(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF8B5CF6)),
+        Icon(icon, size: 16, color: const Color(0xFF92BBFF)),
         const SizedBox(width: 4),
         Text(
           text,
@@ -669,7 +761,7 @@ class _RoomsPageState extends State<RoomsPage> {
                                 children: [
                                   IconButton(
                                     icon: const Icon(Icons.remove_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       if (adults > 1) {
                                         setModalState(() => adults--);
@@ -682,7 +774,7 @@ class _RoomsPageState extends State<RoomsPage> {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.add_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       setModalState(() => adults++);
                                     },
@@ -702,7 +794,7 @@ class _RoomsPageState extends State<RoomsPage> {
                                 children: [
                                   IconButton(
                                     icon: const Icon(Icons.remove_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       if (children > 0) {
                                         setModalState(() => children--);
@@ -715,7 +807,7 @@ class _RoomsPageState extends State<RoomsPage> {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.add_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       setModalState(() => children++);
                                     },
@@ -742,7 +834,7 @@ class _RoomsPageState extends State<RoomsPage> {
                       min: 0,
                       max: 500,
                       divisions: 50,
-                      activeColor: const Color(0xFF8B5CF6),
+                      activeColor: const Color(0xFF92BBFF),
                       labels: RangeLabels(
                         '\$${priceRange.start.round()}',
                         '\$${priceRange.end.round()}',
@@ -775,8 +867,8 @@ class _RoomsPageState extends State<RoomsPage> {
                       child: OutlinedButton(
                         onPressed: _resetFilters,
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF8B5CF6),
-                          side: const BorderSide(color: Color(0xFF8B5CF6)),
+                          foregroundColor: const Color(0xFF92BBFF),
+                          side: const BorderSide(color: Color(0xFF92BBFF)),
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -796,7 +888,7 @@ class _RoomsPageState extends State<RoomsPage> {
                       child: ElevatedButton(
                         onPressed: _applyFilters,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
+                          backgroundColor: const Color(0xFF0077B6),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -851,14 +943,27 @@ class _RoomsPageState extends State<RoomsPage> {
     );
   }
 
+  void _navigateToProfile() async {
+    if (mounted) {
+      // Profile page will fetch user data from API automatically
+      Navigator.pushNamed(context, '/profile');
+    }
+  }
+
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = _selectedIndex == index;
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
-            _selectedIndex = index;
-          });
+          if (index == 3) {
+            // Navigate to Profile page
+            _navigateToProfile();
+          } else {
+            setState(() {
+              _selectedIndex = index;
+            });
+            // TODO: Add navigation for Cart (index 1) and Bookings (index 2)
+          }
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(
@@ -868,14 +973,14 @@ class _RoomsPageState extends State<RoomsPage> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
                 size: 24,
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF94A3B8),
+                  color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
@@ -925,7 +1030,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF8B5CF6),
+              primary: Color(0xFF92BBFF),
             ),
           ),
           child: child!,
@@ -951,7 +1056,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select check-in and check-out dates'),
-          backgroundColor: Color(0xFFEF4444),
+          backgroundColor: const Color(0xFF0077B6),
         ),
       );
       return;
@@ -982,7 +1087,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
           SliverAppBar(
             expandedHeight: 300,
             pinned: true,
-            backgroundColor: const Color(0xFF8B5CF6),
+                          backgroundColor: const Color(0xFF0077B6),
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
@@ -990,7 +1095,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.arrow_back, color: Color(0xFF8B5CF6)),
+                child: const Icon(Icons.arrow_back, color: Color(0xFF92BBFF)),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -1123,7 +1228,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.bed, color: Color(0xFF8B5CF6)),
+                              const Icon(Icons.bed, color: Color(0xFF92BBFF)),
                               const SizedBox(width: 8),
                               Text(
                                 '${widget.property.bedrooms} Bedrooms',
@@ -1147,7 +1252,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.people, color: Color(0xFF8B5CF6)),
+                              const Icon(Icons.people, color: Color(0xFF92BBFF)),
                               const SizedBox(width: 8),
                               Text(
                                 '${widget.property.guests} Guests',
@@ -1218,12 +1323,12 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                          const Color(0xFF92BBFF).withValues(alpha: 0.1),
                           const Color(0xFF6366F1).withValues(alpha: 0.1),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3)),
+                      border: Border.all(color: const Color(0xFF92BBFF).withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1265,7 +1370,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today, color: Color(0xFF8B5CF6), size: 20),
+                                const Icon(Icons.calendar_today, color: Color(0xFF92BBFF), size: 20),
                                 const SizedBox(width: 12),
                                 Text(
                                   checkInDate != null
@@ -1301,7 +1406,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today, color: Color(0xFF8B5CF6), size: 20),
+                                const Icon(Icons.calendar_today, color: Color(0xFF92BBFF), size: 20),
                                 const SizedBox(width: 12),
                                 Text(
                                   checkOutDate != null
@@ -1338,7 +1443,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.people, color: Color(0xFF8B5CF6), size: 20),
+                                  const Icon(Icons.people, color: Color(0xFF92BBFF), size: 20),
                                   const SizedBox(width: 12),
                                   Text(
                                     numberOfGuests.toString(),
@@ -1354,7 +1459,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                                 children: [
                                   IconButton(
                                     icon: const Icon(Icons.remove_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       if (numberOfGuests > 1) {
                                         setState(() => numberOfGuests--);
@@ -1363,7 +1468,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.add_circle_outline),
-                                    color: const Color(0xFF8B5CF6),
+                                    color: const Color(0xFF92BBFF),
                                     onPressed: () {
                                       if (numberOfGuests < widget.property.guests) {
                                         setState(() => numberOfGuests++);
@@ -1382,7 +1487,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF8B5CF6)),
+                              border: Border.all(color: const Color(0xFF92BBFF)),
                             ),
                             child: Column(
                               children: [
@@ -1444,7 +1549,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                                       style: const TextStyle(
                                         fontSize: 24,
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFF8B5CF6),
+                                        color: Color(0xFF92BBFF),
                                       ),
                                     ),
                                   ],
@@ -1459,7 +1564,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                           child: ElevatedButton(
                             onPressed: _showBookingInformationDialog,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
+                              backgroundColor: const Color(0xFF0077B6),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
@@ -1552,7 +1657,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF8B5CF6),
+              primary: Color(0xFF92BBFF),
             ),
           ),
           child: child!,
@@ -1647,7 +1752,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                             child: const Text(
                               'Edit',
                               style: TextStyle(
-                                color: Color(0xFF8B5CF6),
+                                color: Color(0xFF92BBFF),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1742,11 +1847,11 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               selectedColor: const Color(0xFFEDE9FE),
                               backgroundColor: Colors.white,
                               labelStyle: TextStyle(
-                                color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF64748B),
+                                color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF64748B),
                                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                               ),
                               side: BorderSide(
-                                color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFFE2E8F0),
+                                color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFFE2E8F0),
                               ),
                             ),
                           );
@@ -2065,7 +2170,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                                     Navigator.pop(context);
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF8B5CF6),
+                                    backgroundColor: const Color(0xFF0077B6),
                                   ),
                                   child: const Text('Done'),
                                 ),
@@ -2075,7 +2180,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF8B5CF6),
+                        backgroundColor: const Color(0xFF0077B6),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
