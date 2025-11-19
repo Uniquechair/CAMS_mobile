@@ -35,6 +35,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.2
+  shared_preferences: ^2.5.3
+  http: ^1.5.0
+  intl: ^0.19.0
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +78,10 @@ flutter:
     - images/cams_screenshot4.png
     - images/cams_screenshot5.png
     - images/cams_screenshot6.png
+    - assets/ob1.png
+    - assets/ob2.png
+    - assets/ob3.png
+    - assets/bg_wave.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
