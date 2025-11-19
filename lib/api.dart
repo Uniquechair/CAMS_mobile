@@ -789,28 +789,50 @@ Future<Map<String, dynamic>> rejectSuggestedRoom(int propertyid) async {
 Future<Map<String, dynamic>> createReservation(Map<String, dynamic> reservationData) async {
   final userid = await Session.getUserId();
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
+  final username = await Session.getUsername();
+  final creatorUsername = username ?? 'user_${creatorid ?? 0}';
   
   try {
     if (userid == null) {
       throw Exception('User not logged in. Please log in to create a reservation.');
     }
 
+    print('API: Creating reservation for userid: $userid, username: $creatorUsername');
+    print('API: Reservation data: $reservationData');
+
     final reservationWithuserid = {...reservationData, 'userid': userid};
     
     final response = await http.post(
-      Uri.parse('$API_URL/reservation/$userid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
+      Uri.parse('$API_URL/reservation/$userid?creatorid=$creatorid&creatorUsername=${Uri.encodeComponent(creatorUsername)}'),
       headers: {
         'Content-Type': 'application/json',
       },
       body: jsonEncode(reservationWithuserid),
     );
 
-    if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      print('server error: ${response.statusCode} ${response.reasonPhrase} $errorData ${response.request?.url}');
-      throw Exception(errorData['error'] ?? 'Failed to create reservation');
+    print('API: Reservation response status: ${response.statusCode}');
+    print('API: Reservation response body: ${response.body}');
+
+    // Accept both 200 (OK) and 201 (Created) as success status codes
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      try {
+        final errorData = jsonDecode(response.body);
+        // Try to get detailed error message, fallback to generic message
+        final errorMessage = errorData['details'] ?? 
+                            errorData['error'] ?? 
+                            errorData['message'] ?? 
+                            'Failed to create reservation';
+        print('API: Server error: ${response.statusCode} ${response.reasonPhrase}');
+        print('API: Error data: $errorData');
+        throw Exception(errorMessage);
+      } catch (e) {
+        if (e is Exception) {
+          rethrow;
+        }
+        // If JSON parsing fails, use the raw response
+        print('API: Failed to parse error response, using raw body');
+        throw Exception('Failed to create reservation: ${response.statusCode} ${response.reasonPhrase}');
+      }
     }
 
     final result = jsonDecode(response.body);
@@ -818,9 +840,10 @@ Future<Map<String, dynamic>> createReservation(Map<String, dynamic> reservationD
       throw Exception('No valid reservation ID received from server');
     }
 
+    print('API: Reservation created successfully with ID: ${result['reservationid']}');
     return result;
   } catch (error) {
-    print('API error: $error');
+    print('API error creating reservation: $error');
     rethrow;
   }
 }
@@ -898,20 +921,44 @@ Future<List<dynamic>> fetchCart() async {
   final userid = await Session.getUserId();
   
   try {
+    if (userid == null) {
+      print('API: User ID not found in session, returning empty cart');
+      return [];
+    }
+
+    print('API: Fetching cart for userid: $userid');
     final response = await http.get(
       Uri.parse('$API_URL/cart?userid=$userid'),
     );
-    
+
+    print('API: Cart response status: ${response.statusCode}');
+
+    // 404 means no cart items found - that's okay
+    if (response.statusCode == 404) {
+      print('API: No cart items found (404), returning empty list');
+      return [];
+    }
+
     if (response.statusCode != 200) {
-      throw Exception('Failed to fetch reservations');
-      }
+      print('API: Unexpected status ${response.statusCode}, returning empty list');
+      return [];
+    }
 
     final data = jsonDecode(response.body);
-      
-    return data['reservations'];
+    
+    // Try different possible keys
+    if (data['reservations'] != null && data['reservations'] is List) {
+      print('API: Found ${(data['reservations'] as List).length} cart items');
+      return data['reservations'];
+    } else if (data is List) {
+      print('API: Response is direct list with ${data.length} cart items');
+      return data;
+    }
+    
+    return [];
   } catch (error) {
-    print('API error: $error');
-    rethrow;
+    print('API error fetching cart: $error');
+    return [];
   }
 }
 

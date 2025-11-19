@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import 'dart:convert';
+import 'dart:typed_data';
+import 'customer_cart.dart';
+import 'customer_bookings.dart';
+import 'customer_notification.dart';
+import '../shared/navigation_menu.dart';
+import '../shared/bottom_navigation_bar.dart';
 
 // Property Model
 class Property {
@@ -9,6 +15,7 @@ class Property {
   final String name;
   final String location;
   final List<String> imageUrls;
+  final List<Uint8List?> imageBytes; // Decoded base64 images
   final double rating;
   final int reviews;
   final int bedrooms;
@@ -22,6 +29,7 @@ class Property {
     required this.name,
     required this.location,
     required this.imageUrls,
+    required this.imageBytes,
     required this.rating,
     required this.reviews,
     required this.bedrooms,
@@ -41,6 +49,7 @@ class RoomsPage extends StatefulWidget {
 }
 
 class _RoomsPageState extends State<RoomsPage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
   List<Property> allProperties = [];
   List<Property> filteredProperties = [];
@@ -80,11 +89,22 @@ class _RoomsPageState extends State<RoomsPage> {
           if (propertyData['propertystatus'] == 'Available') {
             // Parse property images from backend
             List<String> imageUrls = [];
+            List<Uint8List?> imageBytesList = [];
             if (propertyData['propertyimage'] != null) {
               final images = propertyData['propertyimage'] as List;
               for (var base64Image in images) {
                 if (base64Image != null && base64Image.toString().isNotEmpty) {
-                  imageUrls.add('data:image/jpeg;base64,$base64Image');
+                  try {
+                    // Decode base64 to bytes
+                    final bytes = base64Decode(base64Image.toString());
+                    imageBytesList.add(bytes);
+                    imageUrls.add('base64'); // Marker for base64 image
+                    print('CustomerRooms: Successfully decoded base64 image');
+                  } catch (e) {
+                    print('CustomerRooms: Error decoding base64 image: $e');
+                    imageBytesList.add(null);
+                    imageUrls.add('https://via.placeholder.com/800x600?text=No+Image');
+                  }
                 }
               }
             }
@@ -92,6 +112,7 @@ class _RoomsPageState extends State<RoomsPage> {
             // If no images, add a placeholder
             if (imageUrls.isEmpty) {
               imageUrls.add('https://via.placeholder.com/800x600?text=No+Image');
+              imageBytesList.add(null);
             }
 
             // Default amenities (backend doesn't have this data)
@@ -103,6 +124,7 @@ class _RoomsPageState extends State<RoomsPage> {
               name: propertyData['propertyaddress'] ?? 'Property',
               location: propertyData['nearbylocation'] ?? 'Unknown Location',
               imageUrls: imageUrls,
+              imageBytes: imageBytesList,
               rating: 4.5, // Default rating (backend doesn't have this)
               reviews: 0, // Default reviews (backend doesn't have this)
               bedrooms: int.tryParse(propertyData['propertybedtype']?.toString() ?? '1') ?? 1,
@@ -209,6 +231,7 @@ class _RoomsPageState extends State<RoomsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFE7F0FF),
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -226,26 +249,31 @@ class _RoomsPageState extends State<RoomsPage> {
               child: const Icon(Icons.home, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Property Booking',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    'Property Booking',
+                    style: TextStyle(
+                      color: Color(0xFF1E293B),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  'Welcome, customer',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
+                  Text(
+                    'Welcome, customer',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -253,12 +281,9 @@ class _RoomsPageState extends State<RoomsPage> {
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
             onPressed: () {
-              // TODO: Implement notifications
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Notifications feature coming soon!'),
-                  duration: Duration(seconds: 1),
-                ),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CustomerNotifications()),
               );
             },
           ),
@@ -366,7 +391,12 @@ class _RoomsPageState extends State<RoomsPage> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: UserRole.customer,
+      ),
     );
   }
 
@@ -453,15 +483,10 @@ class _RoomsPageState extends State<RoomsPage> {
                         itemBuilder: (context, index) {
                           return Stack(
                             children: [
-                              Image.network(
-                                property.imageUrls[index],
-                                width: double.infinity,
+                              _buildPropertyImage(
+                                imageUrl: property.imageUrls[index],
+                                imageBytes: index < property.imageBytes.length ? property.imageBytes[index] : null,
                                 height: 200,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: const Color(0xFFE2E8F0),
-                                  child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
-                                ),
                               ),
                               Positioned(
                                 bottom: 8,
@@ -486,15 +511,10 @@ class _RoomsPageState extends State<RoomsPage> {
                           );
                         },
                       )
-                    : Image.network(
-                        property.imageUrls[0],
-                        width: double.infinity,
+                    : _buildPropertyImage(
+                        imageUrl: property.imageUrls[0],
+                        imageBytes: property.imageBytes.isNotEmpty ? property.imageBytes[0] : null,
                         height: 200,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: const Color(0xFFE2E8F0),
-                          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
-                        ),
                       ),
               ),
             ),
@@ -633,6 +653,44 @@ class _RoomsPageState extends State<RoomsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildPropertyImage({String? imageUrl, Uint8List? imageBytes, double? height}) {
+    if (imageBytes != null && imageUrl == 'base64') {
+      // Use Image.memory for base64 images
+      return Image.memory(
+        imageBytes,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 200,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else if (imageUrl != null && imageUrl.startsWith('http')) {
+      // Use Image.network for URL images
+      return Image.network(
+        imageUrl,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 200,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else {
+      // Placeholder for no image
+      return Container(
+        height: height ?? 200,
+        width: double.infinity,
+        color: const Color(0xFFE2E8F0),
+        child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+      );
+    }
   }
 
   Widget _buildPropertyFeature(IconData icon, String text) {
@@ -914,82 +972,35 @@ class _RoomsPageState extends State<RoomsPage> {
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomNavItem(Icons.home, 'Rooms', 0),
-              _buildBottomNavItem(Icons.shopping_cart, 'Cart', 1),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
-              _buildBottomNavItem(Icons.person, 'Profile', 3),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _navigateToProfile() async {
-    if (mounted) {
-      // Profile page will fetch user data from API automatically
-      Navigator.pushNamed(context, '/profile');
+  void _handleBottomNavTap(int index) {
+    if (index == 0) {
+      // Rooms - already on this page
+      if (_selectedIndex != 0) {
+        setState(() => _selectedIndex = 0);
+      }
+      return;
     }
-  }
-
-  Widget _buildBottomNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          if (index == 3) {
-            // Navigate to Profile page
-            _navigateToProfile();
-          } else {
-            setState(() {
-              _selectedIndex = index;
-            });
-            // TODO: Add navigation for Cart (index 1) and Bookings (index 2)
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
-                size: 24,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (index == 1) {
+      // Cart
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const CustomerCart()),
+      );
+      return;
+    }
+    if (index == 2) {
+      // Bookings
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const CustomerBookings()),
+      );
+      return;
+    }
+    if (index == 3) {
+      // Profile
+      Navigator.pushNamed(context, '/profile');
+      return;
+    }
   }
 }
 
@@ -1018,6 +1029,41 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
   int calculateNights() {
     if (checkInDate == null || checkOutDate == null) return 0;
     return checkOutDate!.difference(checkInDate!).inDays;
+  }
+
+  Widget _buildPropertyImage({String? imageUrl, Uint8List? imageBytes, double? height}) {
+    if (imageBytes != null && imageUrl == 'base64') {
+      return Image.memory(
+        imageBytes,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 200,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else if (imageUrl != null && imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 200,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else {
+      return Container(
+        height: height ?? 200,
+        width: double.infinity,
+        color: const Color(0xFFE2E8F0),
+        child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+      );
+    }
   }
 
   Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
@@ -1111,13 +1157,9 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                             });
                           },
                           itemBuilder: (context, index) {
-                            return Image.network(
-                              widget.property.imageUrls[index],
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: const Color(0xFFE2E8F0),
-                                child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
-                              ),
+                            return _buildPropertyImage(
+                              imageUrl: widget.property.imageUrls[index],
+                              imageBytes: index < widget.property.imageBytes.length ? widget.property.imageBytes[index] : null,
                             );
                           },
                         ),
@@ -1142,13 +1184,9 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                         ),
                       ],
                     )
-                  : Image.network(
-                      widget.property.imageUrls[0],
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: const Color(0xFFE2E8F0),
-                        child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
-                      ),
+                  : _buildPropertyImage(
+                      imageUrl: widget.property.imageUrls[0],
+                      imageBytes: widget.property.imageBytes.isNotEmpty ? widget.property.imageBytes[0] : null,
                     ),
             ),
           ),
@@ -1647,6 +1685,41 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
     super.dispose();
   }
 
+  Widget _buildPropertyImage({String? imageUrl, Uint8List? imageBytes, double? height}) {
+    if (imageBytes != null && imageUrl == 'base64') {
+      return Image.memory(
+        imageBytes,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 150,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else if (imageUrl != null && imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        height: height,
+        width: height != null ? double.infinity : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 150,
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
+        ),
+      );
+    } else {
+      return Container(
+        height: height ?? 150,
+        width: double.infinity,
+        color: const Color(0xFFE2E8F0),
+        child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
+      );
+    }
+  }
+
   Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -2056,16 +2129,10 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
-                                widget.property.imageUrls[0],
+                              child: _buildPropertyImage(
+                                imageUrl: widget.property.imageUrls.isNotEmpty ? widget.property.imageUrls[0] : null,
+                                imageBytes: widget.property.imageBytes.isNotEmpty ? widget.property.imageBytes[0] : null,
                                 height: 150,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  height: 150,
-                                  color: const Color(0xFFE2E8F0),
-                                  child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
-                                ),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -2137,46 +2204,198 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (_formKey.currentState!.validate()) {
-                          Navigator.pop(context);
+                          // Show loading dialog
                           showDialog(
                             context: context,
-                            builder: (context) => AlertDialog(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                            barrierDismissible: false,
+                            builder: (context) => const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF0077B6),
                               ),
-                              title: Row(
-                                children: const [
-                                  Icon(Icons.check_circle, color: Color(0xFF10B981), size: 28),
-                                  SizedBox(width: 12),
-                                  Text('Booking Confirmed!'),
-                                ],
-                              ),
-                              content: Text(
-                                'Your booking for ${widget.property.name} has been confirmed.\n\nTotal: RM ${totalPrice.toStringAsFixed(2)} for $nights night(s)\n\nCheck-in: ${_editableCheckIn.day}/${_editableCheckIn.month}/${_editableCheckIn.year}\nCheck-out: ${_editableCheckOut.day}/${_editableCheckOut.month}/${_editableCheckOut.year}',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('View Bookings'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    Navigator.pop(context);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF0077B6),
-                                  ),
-                                  child: const Text('Done'),
-                                ),
-                              ],
                             ),
                           );
+
+                          try {
+                            // Validate that phone number is not empty
+                            final phoneNumber = _phoneController.text.trim();
+                            if (phoneNumber.isEmpty) {
+                              if (mounted) Navigator.pop(context); // Close loading dialog
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please enter a phone number'),
+                                    backgroundColor: Color(0xFFEF4444),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // Prepare reservation data - backend expects 'rc' prefix for customer details
+                            // Ensure DateTime values are valid before formatting
+                            try {
+                              // Format dates as PostgreSQL timestamp format (YYYY-MM-DD HH:MM:SS)
+                              // Backend expects timestamp, so include time component (00:00:00 for midnight)
+                              final checkInDateStr = '${_editableCheckIn.year}-${_editableCheckIn.month.toString().padLeft(2, '0')}-${_editableCheckIn.day.toString().padLeft(2, '0')} 00:00:00';
+                              final checkOutDateStr = '${_editableCheckOut.year}-${_editableCheckOut.month.toString().padLeft(2, '0')}-${_editableCheckOut.day.toString().padLeft(2, '0')} 00:00:00';
+                              
+                              print('CustomerRooms: Check-in date string: $checkInDateStr');
+                              print('CustomerRooms: Check-out date string: $checkOutDateStr');
+                              print('CustomerRooms: Check-in DateTime values - year: ${_editableCheckIn.year}, month: ${_editableCheckIn.month}, day: ${_editableCheckIn.day}');
+                              print('CustomerRooms: Check-out DateTime values - year: ${_editableCheckOut.year}, month: ${_editableCheckOut.month}, day: ${_editableCheckOut.day}');
+                              
+                              // Validate dates are reasonable
+                              if (_editableCheckIn.year < 2000 || _editableCheckIn.year > 2100 ||
+                                  _editableCheckOut.year < 2000 || _editableCheckOut.year > 2100) {
+                                throw Exception('Invalid year in date selection');
+                              }
+                              
+                              final reservationData = {
+                                'propertyid': int.parse(widget.property.id),
+                                // Use checkindatetime and checkoutdatetime to match backend response format
+                                'checkindatetime': checkInDateStr,
+                                'checkoutdatetime': checkOutDateStr,
+                                'guestpaxno': widget.numberOfGuests,
+                                'reservationstatus': 'Pending',
+                                'totalprice': totalPrice,
+                                'rctitle': selectedTitle, // Title prefix (Mr., Mrs., Ms.)
+                                'rcfirstname': _firstNameController.text.trim(),
+                                'rclastname': _lastNameController.text.trim(),
+                                'rcemail': _emailController.text.trim(),
+                                'rcphoneno': phoneNumber, // Backend expects 'rcphoneno' not 'rcphonenumber'
+                                'rcspecialrequests': _requestsController.text.trim().isEmpty ? null : _requestsController.text.trim(),
+                              };
+                              
+                              print('CustomerRooms: Full reservation data: $reservationData');
+                              
+                              // Call API to create reservation
+                              await api.createReservation(reservationData);
+                              
+                              // Close loading dialog on success
+                              if (mounted) Navigator.pop(context);
+                              
+                            } catch (e) {
+                              // Close loading dialog on error
+                              if (mounted) Navigator.pop(context);
+                              print('CustomerRooms: Error creating reservation: $e');
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error: ${e.toString()}'),
+                                    backgroundColor: const Color(0xFFEF4444),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // Close booking dialog
+                            if (mounted) Navigator.pop(context);
+
+                            // Show success notification at the top
+                            if (mounted) {
+                              final overlay = Overlay.of(context);
+                              late OverlayEntry overlayEntry;
+                              
+                              overlayEntry = OverlayEntry(
+                                builder: (context) => Positioned(
+                                  top: MediaQuery.of(context).padding.top + 10,
+                                  left: 20,
+                                  right: 20,
+                                  child: Material(
+                                    elevation: 6,
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.transparent,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF468FAF),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.check_circle, color: Colors.white, size: 24),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              'Booking added to cart! Total: RM ${totalPrice.toStringAsFixed(2)} for $nights night(s)',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                          TextButton(
+                                            onPressed: () {
+                                              overlayEntry.remove();
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(builder: (context) => const CustomerCart()),
+                                              );
+                                            },
+                                            child: const Text(
+                                              'View Cart',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                              
+                              overlay.insert(overlayEntry);
+                              
+                              // Remove overlay after 3 seconds
+                              Future.delayed(const Duration(seconds: 3), () {
+                                if (overlayEntry.mounted) {
+                                  overlayEntry.remove();
+                                }
+                              });
+                            }
+                          } catch (error) {
+                            // Close loading dialog
+                            if (mounted) Navigator.pop(context);
+
+                            // Show error dialog
+                            if (mounted) {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  title: Row(
+                                    children: const [
+                                      Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 28),
+                                      SizedBox(width: 12),
+                                      Text('Error'),
+                                    ],
+                                  ),
+                                  content: Text(
+                                    'Failed to add booking to cart: ${error.toString()}',
+                                  ),
+                                  actions: [
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0077B6),
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: const Text('OK'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                          }
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -2192,6 +2411,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ),

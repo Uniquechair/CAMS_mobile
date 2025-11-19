@@ -52,7 +52,7 @@ class _CustomerCartNotLoginState extends State<CustomerCartNotLogin> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF92BBFF)],
+                  colors: [Color(0xFF0077B6), Color(0xFF92BBFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -62,22 +62,8 @@ class _CustomerCartNotLoginState extends State<CustomerCartNotLogin> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text(
-                  'Property Booking',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'Welcome, customer',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
+                Text('Your Cart', style: TextStyle(color: Color(0xFF1E293B), fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Review your selections', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
               ],
             ),
           ],
@@ -85,25 +71,13 @@ class _CustomerCartNotLoginState extends State<CustomerCartNotLogin> {
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 12),
-            child: ElevatedButton.icon(
+            child: IconButton(
               onPressed: () {
                 Navigator.pushNamed(context, '/login');
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0077B6),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              icon: const Icon(Icons.login, size: 18),
-              label: const Text(
-                'Login',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+              icon: const Icon(
+                Icons.login,
+                color: Color(0xFF64748B),
               ),
             ),
           ),

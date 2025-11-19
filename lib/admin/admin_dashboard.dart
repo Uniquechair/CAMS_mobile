@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/session.dart';
-import '../services/rbac_service.dart';
+import '../services/rbac_service.dart' as rbac;
 import '../app.dart';
 import '../shared_admin_moderator/manage_service.dart';
+import '../shared/navigation_menu.dart' as nav;
+import '../shared/bottom_navigation_bar.dart';
 import '../api.dart' as api;
+import 'admin_notification.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -13,10 +16,14 @@ class AdminDashboard extends StatefulWidget {
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
+enum _AdminStatCategory { user, booking, finance }
+
 class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _currentUserRole;
+
+  _AdminStatCategory _selectedCategory = _AdminStatCategory.user;
   
   // Dashboard statistics
   int _totalUsers = 0;
@@ -358,7 +365,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   ),
                   Text(
-                    'Welcome, ${_currentUserRole != null ? RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
+                  'Welcome, ${_currentUserRole != null ? rbac.RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
                     style: TextStyle(
                       color: Color(0xFF64748B),
                       fontSize: 12,
@@ -373,7 +380,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminNotifications()),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
@@ -408,6 +420,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // category filter bar
+              _buildCategoryFilters(),
+              const SizedBox(height: 16),
+
               _buildStatsGrid(),
               const SizedBox(height: 24),
               _buildApprovalQueue(),
@@ -417,11 +434,191 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      endDrawer: MoreMenuDrawer(
+        role: nav.UserRole.admin,
+        onItemSelected: _handleMenuSelection,
+      ),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: nav.UserRole.admin,
+      ),
+    );
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (index == 4) {
+      // More button - handled by SharedBottomNavigationBar to open drawer
+      return;
+    }
+    if (index == 3) {
+      Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (index == 1) {
+      Navigator.of(context).pushNamed('/manage-services');
+      return;
+    }
+    if (index == 2) {
+      Navigator.of(context).pushNamed('/manage-booking');
+      return;
+    }
+    setState(() => _selectedIndex = index);
+  }
+
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    if (label == 'Dashboard') {
+      // Already on dashboard
+      return;
+    }
+    if (label == 'Profile') {
+      Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (label == 'PropertyListing' || label == 'Properties') {
+      Navigator.of(context).pushNamed('/manage-services');
+      return;
+    }
+    if (label == 'Reservation' || label == 'Bookings') {
+      Navigator.of(context).pushNamed('/manage-booking');
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
+        backgroundColor: const Color(0xFF468FAF),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  // filter chips row (User / Booking / Finance)
+  Widget _buildCategoryFilters() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildCategoryChip('User', _AdminStatCategory.user),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Booking', _AdminStatCategory.booking),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Finance', _AdminStatCategory.finance),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryChip(String label, _AdminStatCategory category) {
+    final bool isSelected = _selectedCategory == category;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isSelected ? Colors.white : const Color(0xFF0F172A),
+        ),
+      ),
+      selected: isSelected,
+      onSelected: (_) {
+        setState(() {
+          _selectedCategory = category;
+        });
+      },
+      selectedColor: const Color(0xFF0077B6),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? const Color(0xFF0077B6) : const Color(0xFFE2E8F0),
+        ),
+      ),
     );
   }
 
   Widget _buildStatsGrid() {
+    // Build cards based on the selected category
+    final List<Widget> cards = [];
+
+    switch (_selectedCategory) {
+      case _AdminStatCategory.user:
+        // User: total users
+        cards.add(
+          _buildStatCard(
+            title: 'Total Users',
+            value: '$_totalUsers',
+            icon: Icons.people_outline,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/users',
+          ),
+        );
+        break;
+
+      case _AdminStatCategory.booking:
+        // Booking: total properties, total reservations
+        cards.add(
+          _buildStatCard(
+            title: 'Total Properties',
+            value: '$_totalProperties',
+            icon: Icons.apartment,
+            iconColor: const Color(0xFF10B981),
+            route: '/properties',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Total Reservations',
+            value: '$_totalReservations',
+            icon: Icons.calendar_today,
+            iconColor: const Color(0xFF3B82F6),
+            route: '/reservations',
+          ),
+        );
+        break;
+
+      case _AdminStatCategory.finance:
+        // Finance: occupancy rate, revPAR, total revenue, guest satisfaction
+        cards.add(
+          _buildStatCard(
+            title: 'Occupancy Rate',
+            value: '${_occupancyRate.toStringAsFixed(1)}%',
+            icon: Icons.trending_up,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/occupancy',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'RevPAR',
+            value: 'MYR ${_revPAR.toStringAsFixed(2)}',
+            icon: Icons.account_balance_wallet,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/revpar',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Total Revenue',
+            value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
+            icon: Icons.attach_money,
+            iconColor: const Color(0xFF10B981),
+            route: '/revenue',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Guest Satisfaction',
+            value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
+            icon: Icons.bar_chart,
+            iconColor: const Color(0xFFEF4444),
+            route: '/satisfaction',
+          ),
+        );
+        break;
+    }
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -429,57 +626,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
       childAspectRatio: 0.9,
-      children: [
-        _buildStatCard(
-          title: 'Total Users',
-          value: '$_totalUsers',
-          icon: Icons.people_outline,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/users',
-        ),
-        _buildStatCard(
-          title: 'Total Properties',
-          value: '$_totalProperties',
-          icon: Icons.apartment,
-          iconColor: const Color(0xFF10B981),
-          route: '/properties',
-        ),
-        _buildStatCard(
-          title: 'Total Reservations',
-          value: '$_totalReservations',
-          icon: Icons.calendar_today,
-          iconColor: const Color(0xFF3B82F6),
-          route: '/reservations',
-        ),
-        _buildStatCard(
-          title: 'Occupancy Rate',
-          value: '${_occupancyRate.toStringAsFixed(1)}%',
-          icon: Icons.trending_up,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/occupancy',
-        ),
-        _buildStatCard(
-          title: 'RevPAR',
-          value: 'MYR ${_revPAR.toStringAsFixed(2)}',
-          icon: Icons.account_balance_wallet,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/revpar',
-        ),
-        _buildStatCard(
-          title: 'Total Revenue',
-          value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
-          icon: Icons.attach_money,
-          iconColor: const Color(0xFF10B981),
-          route: '/revenue',
-        ),
-        _buildStatCard(
-          title: 'Guest Satisfaction',
-          value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
-          icon: Icons.bar_chart,
-          iconColor: const Color(0xFFEF4444),
-          route: '/satisfaction',
-        ),
-      ],
+      children: cards,
     );
   }
 
@@ -570,7 +717,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     mainAxisSize: MainAxisSize.min, // let contents size themselves
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Flexible is now INSIDE a Row (valid)
                       Flexible(
                         child: Text(
                           'View Details',
@@ -595,8 +741,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildApprovalQueue() {
-    return Container(
+  Widget _buildApprovalQueue() { /* unchanged */ return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -667,8 +812,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-    );
-  }
+    ); }
 
   Widget _buildApprovalItem({
     required String title,
@@ -736,8 +880,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildBookingRequestQueue() {
-    return Container(
+  Widget _buildBookingRequestQueue() { /* unchanged */ return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -803,8 +946,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-    );
-  }
+    ); }
 
   Widget _buildBookingRequestItem({
     required String title,
@@ -872,8 +1014,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
+  Widget _buildDrawer() { /* unchanged */ return Drawer(
       child: Container(
         color: const Color(0xFF1E293B),
         child: Column(
@@ -907,18 +1048,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
-                children: [
-                  _buildDrawerItem(Icons.dashboard, 'Dashboard', true),
-                  _buildDrawerItem(Icons.people, 'Customer', false),
-                  _buildDrawerItem(Icons.supervised_user_circle, 'Moderator', false),
-                  _buildDrawerItem(Icons.admin_panel_settings, 'Administrator', false),
-                  _buildDrawerItem(Icons.apartment, 'PropertyListing', false),
-                  _buildDrawerItem(Icons.calendar_today, 'Reservation', false),
-                  _buildDrawerItem(Icons.receipt_long, 'BooknPayLog', false),
-                  _buildDrawerItem(Icons.history, 'AuditTrails', false),
-                  _buildDrawerItem(Icons.trending_up, 'Finance', false),
-                  _buildDrawerItem(Icons.person, 'Profile', false),
-                ],
+                children: nav.drawerMenuItemsForRole(nav.UserRole.admin)
+                    .asMap()
+                    .entries
+                    .map((entry) => _buildDrawerItem(
+                          entry.value.icon,
+                          entry.value.label,
+                          entry.value.label == 'Dashboard',
+                        ))
+                    .toList(),
               ),
             ),
             Padding(
@@ -953,8 +1091,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ],
         ),
       ),
-    );
-  }
+    ); }
 
   Widget _buildDrawerItem(IconData icon, String title, bool isSelected) {
     return Container(
@@ -995,118 +1132,5 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    return SafeArea(
-      child: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
-        selectedItemColor: const Color(0xFF649EFF),
-        unselectedItemColor: const Color(0xFF94A3B8),
-        onTap: (index) {
-          // ignore: avoid_print
-          print('ADMIN: BottomNavigationBar onTap index=' + index.toString());
-          if (index == 4) {
-            _scaffoldKey.currentState?.openDrawer();
-            return;
-          }
-          if (index == 3) {
-            // Profile page will fetch user data from API automatically
-            Navigator.of(context).pushNamed('/profile');
-            return;
-          }
-          if (index == 1) {
-            // Properties -> Manage Services
-            // ignore: avoid_print
-            print('ADMIN: BottomNavigationBar opening Manage Services');
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Opening Manage Services...', style: TextStyle(color: Colors.black)),
-                backgroundColor: Color(0xFF468FAF),
-                duration: Duration(seconds: 1),
-              ),
-            );
-            // Try named route first, fallback to direct push
-            Future.microtask(() {
-              try {
-                Navigator.of(context).pushNamed('/manage-services');
-                // ignore: avoid_print
-                print('ADMIN: Navigation to /manage-services completed');
-              } catch (e) {
-                // ignore: avoid_print
-                print('ADMIN: Named route failed: $e, trying direct push');
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ManageServicesPage()),
-                );
-              }
-            });
-            return;
-          }
-          setState(() => _selectedIndex = index);
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.room_service), label: 'Properties'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Bookings'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildBottomNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          // ignore: avoid_print
-          print('ADMIN: bottom nav tapped index=' + index.toString());
-          if (index == 4) {
-            _scaffoldKey.currentState?.openDrawer();
-          } else if (index == 1) {
-            // Properties -> Manage Services
-            // ignore: avoid_print
-            print('ADMIN: navigating to Manage Services from bottom Properties');
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Opening Manage Services...', style: TextStyle(color: Colors.black)),
-                backgroundColor: Color(0xFF468FAF),
-                duration: Duration(seconds: 1),
-              ),
-            );
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ManageServicesPage()),
-            );
-          } else {
-            setState(() {
-              _selectedIndex = index;
-            });
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? const Color(0xFF649EFF) : const Color(0xFF94A3B8),
-                size: 24,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFF649EFF) : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

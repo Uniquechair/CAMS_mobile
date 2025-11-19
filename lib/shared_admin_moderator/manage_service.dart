@@ -126,13 +126,128 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
             // Reverse the list so newest is at top
             final reversedAuditData = auditData.reversed.toList();
             for (var log in reversedAuditData) {
+              // Debug: Print the log structure to understand the API response
+              print('ManageService: Audit log entry: $log');
+              print('ManageService: Log keys: ${log.keys.toList()}');
+              
+              // Get details/description first to check for action keywords
+              String details = log['action'] ?? 
+                              log['details'] ?? 
+                              log['description'] ?? 
+                              log['message'] ?? 
+                              '';
+              
+              // Normalize action type to lowercase and handle various formats
+              String actionType = (log['actiontype'] ?? log['actionType'] ?? log['action'] ?? '').toString().toLowerCase();
+              
+              // Also check the details field for action keywords (e.g., "Create Reservation")
+              String detailsLower = details.toLowerCase();
+              
+              // Map various action type formats to standard ones (add, edit, delete, unknown)
+              // IMPORTANT: Check specific patterns first to avoid false matches
+              
+              // 1. Check for user activities that should be "unknown" (Login, Logout, Assign User Role)
+              // These should use default color, not edit color
+              if (detailsLower.contains('login') ||
+                  detailsLower.contains('logout') ||
+                  detailsLower.contains('assign user role') ||
+                  actionType.contains('login') ||
+                  actionType.contains('logout') ||
+                  actionType == 'login' ||
+                  actionType == 'logout') {
+                actionType = 'unknown';
+              }
+              // 2. Add actions: create, insert, add (account/property)
+              else if (actionType.contains('create') || 
+                  actionType.contains('insert') || 
+                  (actionType.contains('add') && !actionType.contains('update')) ||
+                  actionType == 'c' ||
+                  actionType == 'add account' ||
+                  actionType == 'add property' ||
+                  detailsLower.contains('create') ||
+                  detailsLower.contains('insert') ||
+                  detailsLower.contains('add account') ||
+                  detailsLower.contains('add property') ||
+                  detailsLower.contains('created') ||
+                  detailsLower.contains('new reservation') ||
+                  detailsLower.contains('new property')) {
+                actionType = 'add';
+              } 
+              // 3. Delete actions: delete, remove
+              else if (actionType.contains('delete') || 
+                       actionType.contains('remove') || 
+                       actionType == 'd' ||
+                       detailsLower.contains('delete') ||
+                       detailsLower.contains('remove') ||
+                       detailsLower.contains('deleted') ||
+                       detailsLower.contains('removed')) {
+                actionType = 'delete';
+              } 
+              // 4. Edit actions: update, edit, modify (profile/property) - but NOT login/logout
+              else if (actionType.contains('update') || 
+                       actionType.contains('edit') || 
+                       actionType.contains('modify') || 
+                       actionType == 'u' ||
+                       actionType == 'update profile' ||
+                       actionType == 'update property' ||
+                       actionType == 'edit property' ||
+                       (detailsLower.contains('update') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
+                       (detailsLower.contains('edit') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
+                       detailsLower.contains('modify') ||
+                       detailsLower.contains('updated') ||
+                       (detailsLower.contains('edited') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
+                       detailsLower.contains('modified') ||
+                       detailsLower.contains('change')) {
+                actionType = 'edit';
+              }
+              // 5. Default to unknown if no clear match
+              else {
+                actionType = 'unknown';
+              }
+              
+              // Get property name from various possible fields
+              String propertyName = log['propertydescription'] ?? 
+                                   log['propertyDescription'] ?? 
+                                   log['propertyname'] ?? 
+                                   log['propertyName'] ?? 
+                                   log['entityname'] ?? 
+                                   log['entityName'] ??
+                                   log['property'] ??
+                                   log['entitytype'] ?? 
+                                   log['entityType'] ?? 
+                                   'Property';
+              
+              // Get username
+              String username = log['username'] ?? 
+                               log['userName'] ?? 
+                               log['user'] ?? 
+                               log['modifiedby'] ?? 
+                               log['modifiedBy'] ?? 
+                               'Unknown';
+              
+              // If details is empty, create a default message based on action type
+              if (details.isEmpty) {
+                if (actionType == 'add') {
+                  details = 'Created new property listing${propertyName != 'Property' ? ' for $propertyName' : ''}';
+                } else if (actionType == 'edit') {
+                  details = 'Updated property details${propertyName != 'Property' ? ' for $propertyName' : ''}';
+                } else if (actionType == 'delete') {
+                  details = 'Removed property listing${propertyName != 'Property' ? ' for $propertyName' : ''}';
+                } else {
+                  details = 'Property action performed';
+                }
+              }
+              
               _auditTrail.add({
-                'action': log['actiontype']?.toString().toLowerCase() ?? 'edit',
-                'user': log['username'] ?? 'Unknown',
-                'property': log['entitytype'] ?? 'Property',
-                'time': _formatTimestamp(log['timestamp']),
-                'details': log['action'] ?? 'No details',
+                'action': actionType,
+                'user': username,
+                'property': propertyName,
+                'time': _formatTimestamp(log['timestamp'] ?? log['createdat'] ?? log['createdAt'] ?? log['time']),
+                'details': details,
               });
+              
+              print('ManageService: Mapped audit log - action: $actionType, user: $username, property: $propertyName, details: $details');
+              print('ManageService: Raw actiontype field: ${log['actiontype']}, Raw action field: ${log['action']}, Raw details: ${details}');
             }
           }
           
@@ -631,17 +746,36 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
 
   // ----------------- AUDIT CARD BUILDER -----------------
   Widget _buildAuditCard(Map<String, dynamic> log) {
-    final color = log['action'] == 'add'
-        ? const Color(0xFFA8D5FF) // Light blue - calm
-        : log['action'] == 'edit'
-            ? const Color(0xFFB3D9FF) // Medium blue
-            : const Color(0xFFC5D9E8); // Blue-gray - removed
-
-    final icon = log['action'] == 'add'
-        ? Icons.add_circle
-        : log['action'] == 'edit'
-            ? Icons.edit
-            : Icons.delete;
+    // Get action type and normalize it (handle case sensitivity and whitespace)
+    final actionType = (log['action']?.toString().toLowerCase().trim() ?? 'edit');
+    final details = (log['details']?.toString().toLowerCase().trim() ?? '');
+    
+    // Determine color and icon based on action type
+    final Color color;
+    final IconData icon;
+    
+    // Use the parsed actionType directly (it's already normalized in the parsing logic)
+    // Add actions: add, create, insert, add account, add property
+    if (actionType == 'add') {
+      color = const Color(0xFFA8D5FF); // Light blue for add
+      icon = Icons.add_circle;
+    } 
+    // Edit actions: edit, update, modify, update profile, update property, edit property
+    else if (actionType == 'edit') {
+      color = const Color(0xFFB3D9FF); // Medium blue for edit
+      icon = Icons.edit;
+    } 
+    // Delete actions: delete, remove
+    else if (actionType == 'delete') {
+      color = const Color(0xFFC5D9E8); // Blue-gray for delete
+      icon = Icons.delete;
+    } else {
+      // Default/Unknown actions (Login, Logout, Assign User Role, etc.) - use default color
+      // This includes actions that don't match add/edit/delete patterns
+      print('ManageService: Unknown/default action type: $actionType, details: $details');
+      color = const Color(0xFF89CFF0); // Default blue for unknown actions
+      icon = Icons.edit; // Still show edit icon for unknown actions
+    }
 
     return Card(
       color: color,
@@ -652,7 +786,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
           backgroundColor: Colors.white,
           child: Icon(icon, color: Colors.black87),
         ),
-        title: Text('${log['user']} ${log['action']}ed ${log['property']}'),
+        title: Text('${log['user']} ${log['action'] == 'unknown' ? 'posted' : log['action']}ed ${log['property']}'),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -674,7 +808,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFE7F0FF),
       appBar: AppBar(
-        title: const Text('Manage Services'),
+        title: const Text('Manage Services', style: TextStyle(color: Colors.white)),
         backgroundColor: themeColor,
         actions: [
           IconButton(

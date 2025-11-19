@@ -44,6 +44,12 @@ class _HSTextFieldState extends State<HSTextField> {
         obscureText: widget.obscure ? _obscureText : false,
         keyboardType: widget.keyboardType,
         validator: widget.validator,
+        toolbarOptions: const ToolbarOptions(
+          copy: false,
+          cut: false,
+          paste: false,
+          selectAll: false,
+        ),
         decoration: InputDecoration(
         labelText: widget.label,
         labelStyle: const TextStyle(color: Color(0xFF0077B6)),

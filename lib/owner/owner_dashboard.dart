@@ -11,10 +11,14 @@ class OwnerDashboard extends StatefulWidget {
   State<OwnerDashboard> createState() => _OwnerDashboardState();
 }
 
+enum _StatCategory { user, booking, finance, cluster }
+
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _currentUserRole;
+
+  _StatCategory _selectedCategory = _StatCategory.user;
   
   // Dashboard statistics
   int _totalUsers = 0;
@@ -339,7 +343,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Owner Dashboard',
                     style: TextStyle(
                       color: Color(0xFF1E293B),
@@ -349,7 +353,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                   ),
                   Text(
                     'Welcome, ${_currentUserRole != null ? RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Color(0xFF64748B),
                       fontSize: 12,
                       fontWeight: FontWeight.normal,
@@ -398,6 +402,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              _buildCategoryFilters(),
+              const SizedBox(height: 16),
+
               _buildStatsGrid(),
             ],
           ),
@@ -407,7 +415,145 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  Widget _buildCategoryFilters() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildCategoryChip('User', _StatCategory.user),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Booking', _StatCategory.booking),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Finance', _StatCategory.finance),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Cluster', _StatCategory.cluster),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryChip(String label, _StatCategory category) {
+    final bool isSelected = _selectedCategory == category;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isSelected ? Colors.white : const Color(0xFF0F172A),
+        ),
+      ),
+      selected: isSelected,
+      onSelected: (_) {
+        setState(() {
+          _selectedCategory = category;
+        });
+      },
+      selectedColor: const Color(0xFF0077B6),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? const Color(0xFF0077B6) : const Color(0xFFE2E8F0),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatsGrid() {
+    // Build cards based on the selected category
+    final List<Widget> cards = [];
+
+    switch (_selectedCategory) {
+      case _StatCategory.user:
+        // User: total users
+        cards.add(
+          _buildStatCard(
+            title: 'Total Users',
+            value: '$_totalUsers',
+            icon: Icons.people_outline,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/users',
+          ),
+        );
+        break;
+
+      case _StatCategory.booking:
+        // Booking: total properties, total reservations
+        cards.add(
+          _buildStatCard(
+            title: 'Total Properties',
+            value: '$_totalProperties',
+            icon: Icons.apartment,
+            iconColor: const Color(0xFF10B981),
+            route: '/properties',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Total Reservations',
+            value: '$_totalReservations',
+            icon: Icons.calendar_today,
+            iconColor: const Color(0xFF3B82F6),
+            route: '/reservations',
+          ),
+        );
+        break;
+
+      case _StatCategory.finance:
+        // Finance: occupancy rate, revPAR, total revenue, guest satisfaction
+        cards.add(
+          _buildStatCard(
+            title: 'Occupancy Rate',
+            value: '${_occupancyRate.toStringAsFixed(1)}%',
+            icon: Icons.trending_up,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/occupancy',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'RevPAR',
+            value: 'MYR ${_revPAR.toStringAsFixed(2)}',
+            icon: Icons.account_balance_wallet,
+            iconColor: const Color(0xFF8B5CF6),
+            route: '/revpar',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Total Revenue',
+            value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
+            icon: Icons.attach_money,
+            iconColor: const Color(0xFF10B981),
+            route: '/revenue',
+          ),
+        );
+        cards.add(
+          _buildStatCard(
+            title: 'Guest Satisfaction',
+            value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
+            icon: Icons.bar_chart,
+            iconColor: const Color(0xFFEF4444),
+            route: '/satisfaction',
+          ),
+        );
+        break;
+
+      case _StatCategory.cluster:
+        // Cluster: total clusters
+        cards.add(
+          _buildStatCard(
+            title: 'Total Clusters',
+            value: '$_totalClusters',
+            icon: Icons.location_on_outlined,
+            iconColor: const Color(0xFFEF4444),
+            route: '/clusters',
+          ),
+        );
+        break;
+    }
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -415,64 +561,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
       childAspectRatio: 0.9,
-      children: [
-        _buildStatCard(
-          title: 'Total Users',
-          value: '$_totalUsers',
-          icon: Icons.people_outline,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/users',
-        ),
-        _buildStatCard(
-          title: 'Total Properties',
-          value: '$_totalProperties',
-          icon: Icons.apartment,
-          iconColor: const Color(0xFF10B981),
-          route: '/properties',
-        ),
-        _buildStatCard(
-          title: 'Total Reservations',
-          value: '$_totalReservations',
-          icon: Icons.calendar_today,
-          iconColor: const Color(0xFF3B82F6),
-          route: '/reservations',
-        ),
-        _buildStatCard(
-          title: 'Occupancy Rate',
-          value: '${_occupancyRate.toStringAsFixed(1)}%',
-          icon: Icons.trending_up,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/occupancy',
-        ),
-        _buildStatCard(
-          title: 'RevPAR',
-          value: 'MYR ${_revPAR.toStringAsFixed(2)}',
-          icon: Icons.account_balance_wallet,
-          iconColor: const Color(0xFF8B5CF6),
-          route: '/revpar',
-        ),
-        _buildStatCard(
-          title: 'Total Revenue',
-          value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
-          icon: Icons.attach_money,
-          iconColor: const Color(0xFF10B981),
-          route: '/revenue',
-        ),
-        _buildStatCard(
-          title: 'Guest Satisfaction',
-          value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
-          icon: Icons.bar_chart,
-          iconColor: const Color(0xFFEF4444),
-          route: '/satisfaction',
-        ),
-        _buildStatCard(
-          title: 'Total Clusters',
-          value: '$_totalClusters',
-          icon: Icons.location_on_outlined,
-          iconColor: const Color(0xFFEF4444),
-          route: '/clusters',
-        ),
-      ],
+      children: cards,
     );
   }
 
@@ -539,7 +628,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Navigating to $title page', style: TextStyle(color: Colors.black)),
+                      content: Text('Navigating to $title page', style: const TextStyle(color: Colors.black)),
                       backgroundColor: const Color(0xFF468FAF),
                       duration: const Duration(seconds: 1),
                     ),
@@ -554,13 +643,11 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                // Center keeps the content centered even though the button is full width.
                 child: Center(
                   child: Row(
-                    mainAxisSize: MainAxisSize.min, // let contents size themselves
+                    mainAxisSize: MainAxisSize.min, 
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Flexible is now INSIDE a Row (valid)
+                    children: const [
                       Flexible(
                         child: Text(
                           'View Details',
@@ -569,7 +656,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                             fontWeight: FontWeight.w600,
                           ),
                           softWrap: false,
-                          overflow: TextOverflow.ellipsis, // prevent overflow
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       SizedBox(width: 4),
@@ -649,7 +736,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                  children: const [
                     Icon(Icons.logout),
                     SizedBox(width: 8),
                     Text(
@@ -698,7 +785,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Navigating to $title', style: TextStyle(color: Colors.black)),
+              content: Text('Navigating to $title', style: const TextStyle(color: Colors.black)),
               backgroundColor: const Color(0xFF468FAF),
               duration: const Duration(seconds: 1),
             ),

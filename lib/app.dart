@@ -5,6 +5,10 @@ import 'moderator/moderator_dashboard.dart';
 import 'admin/admin_dashboard.dart';
 import 'owner/owner_dashboard.dart';
 import 'shared_admin_moderator/manage_service.dart';
+import 'shared_admin_moderator/user_management.dart';
+import 'shared_admin_moderator/manage_booking.dart';
+// Export AppRole for use in navigation
+export 'shared_admin_moderator/user_management.dart' show AppRole;
 import 'profile_page.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
@@ -141,6 +145,19 @@ class _CamsAppState extends State<CamsApp> {
         '/owner': (context) => const OwnerDashboard(),
         '/customer': (context) => const RoomsPage(),
         '/manage-services': (context) => const ManageServicesPage(),
+        '/user-management': (context) {
+          // Get role from route arguments or determine from current user
+          final args = ModalRoute.of(context)?.settings.arguments;
+          AppRole role;
+          if (args is AppRole) {
+            role = args;
+          } else {
+            // Default based on route - will be set when navigating
+            role = AppRole.admin;
+          }
+          return AdminUserManagementPage(viewerRole: role);
+        },
+        '/manage-booking': (context) => const AdminManageBooking(),
         '/rbac-test': (context) => const RBACTestScreen(),
       },
     );

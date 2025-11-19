@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'pre_customer_cart.dart';
 import 'pre_customer_booking.dart';
 
-// Property Model
 class Property {
   final String id;
   final String name;
@@ -31,7 +30,8 @@ class Property {
   });
 }
 
-final List<Property> hardcodedProperties = [    //TODO: Replace with real data from backend
+final List<Property> hardcodedProperties = [
+  // TODO: Replace with real data from backend
   Property(
     id: '1',
     name: 'Seaside Villa',
@@ -47,7 +47,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 6,
     pricePerNight: 250,
     amenities: ['WiFi', 'Parking', 'Pool'],
-    description: 'Beautiful seaside villa with stunning ocean views and private pool.',
+    description:
+        'Beautiful seaside villa with stunning ocean views and private pool.',
   ),
   Property(
     id: '2',
@@ -63,7 +64,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 4,
     pricePerNight: 180,
     amenities: ['WiFi', 'Parking', 'Fireplace'],
-    description: 'Cozy mountain cabin perfect for a peaceful retreat in nature.',
+    description:
+        'Cozy mountain cabin perfect for a peaceful retreat in nature.',
   ),
   Property(
     id: '3',
@@ -79,7 +81,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 2,
     pricePerNight: 150,
     amenities: ['WiFi', 'Gym', 'Parking'],
-    description: 'Modern apartment in the heart of the city with easy access to attractions.',
+    description:
+        'Modern apartment in the heart of the city with easy access to attractions.',
   ),
   Property(
     id: '4',
@@ -95,7 +98,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 8,
     pricePerNight: 350,
     amenities: ['WiFi', 'Parking', 'Pool', 'Beach Access'],
-    description: 'Luxurious beach house with direct beach access and modern amenities.',
+    description:
+        'Luxurious beach house with direct beach access and modern amenities.',
   ),
   Property(
     id: '5',
@@ -110,7 +114,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 4,
     pricePerNight: 200,
     amenities: ['WiFi', 'Parking', 'Lake View'],
-    description: 'Charming cottage with beautiful lake views and peaceful surroundings.',
+    description:
+        'Charming cottage with beautiful lake views and peaceful surroundings.',
   ),
   Property(
     id: '6',
@@ -125,7 +130,8 @@ final List<Property> hardcodedProperties = [    //TODO: Replace with real data f
     guests: 6,
     pricePerNight: 220,
     amenities: ['WiFi', 'Parking', 'Pool', 'Hot Tub'],
-    description: 'Stunning desert retreat with panoramic views and luxury amenities.',
+    description:
+        'Stunning desert retreat with panoramic views and luxury amenities.',
   ),
 ];
 
@@ -139,13 +145,21 @@ class CustomerRoomsNotLogin extends StatefulWidget {
 class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   int _selectedIndex = 0;
   List<Property> filteredProperties = hardcodedProperties;
-  
-  // Filter variables
+
   String? selectedLocation;
   DateTimeRange? selectedDateRange;
   int adults = 1;
   int children = 0;
   RangeValues priceRange = const RangeValues(0, 500);
+
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _showFilterSheet() {
     showModalBottomSheet(
@@ -156,17 +170,31 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
     );
   }
 
-  void _applyFilters() {
+  void _refilterProperties() {
     setState(() {
       filteredProperties = hardcodedProperties.where((property) {
-        bool matchesPrice = property.pricePerNight >= priceRange.start &&
+        final matchesPrice = property.pricePerNight >= priceRange.start &&
             property.pricePerNight <= priceRange.end;
-        bool matchesGuests = property.guests >= (adults + children);
-        bool matchesLocation = selectedLocation == null ||
-            property.location.contains(selectedLocation!);
-        return matchesPrice && matchesGuests && matchesLocation;
+
+        final matchesGuests = property.guests >= (adults + children);
+
+        final matchesLocation = selectedLocation == null ||
+            property.location
+                .toLowerCase()
+                .contains(selectedLocation!.toLowerCase());
+
+        final q = _searchQuery.trim().toLowerCase();
+        final matchesSearch = q.isEmpty ||
+            property.name.toLowerCase().contains(q) ||
+            property.location.toLowerCase().contains(q);
+
+        return matchesPrice && matchesGuests && matchesLocation && matchesSearch;
       }).toList();
     });
+  }
+
+  void _applyFilters() {
+    _refilterProperties();
     Navigator.pop(context);
   }
 
@@ -177,8 +205,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
       adults = 1;
       children = 0;
       priceRange = const RangeValues(0, 500);
-      filteredProperties = hardcodedProperties;
     });
+    _refilterProperties();
     Navigator.pop(context);
   }
 
@@ -186,21 +214,29 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
     setState(() {
       _selectedIndex = index;
     });
-    
+
     if (index == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerCartNotLogin()));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => CustomerCartNotLogin()),
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Navigate to Cart page', style: TextStyle(color: Colors.black)),
+          content:
+              Text('Navigate to Cart page', style: TextStyle(color: Colors.black)),
           backgroundColor: Color(0xFF468FAF),
           duration: Duration(seconds: 1),
         ),
       );
     } else if (index == 2) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerBookingsNotLogin()));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => CustomerBookingsNotLogin()),
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Navigate to Bookings page', style: TextStyle(color: Colors.black)),
+          content: Text('Navigate to Bookings page',
+              style: TextStyle(color: Colors.black)),
           backgroundColor: Color(0xFF468FAF),
           duration: Duration(seconds: 1),
         ),
@@ -222,7 +258,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF92BBFF)],
+                  colors: [Color(0xFF0077B6), Color(0xFF92BBFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -255,25 +291,13 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 12),
-            child: ElevatedButton.icon(
+            child: IconButton(
               onPressed: () {
                 Navigator.pushNamed(context, '/login');
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0077B6),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              icon: const Icon(Icons.login, size: 18),
-              label: const Text(
-                'Login',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+              icon: const Icon(
+                Icons.login,
+                color: Color(0xFF64748B),
               ),
             ),
           ),
@@ -312,7 +336,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  ...filteredProperties.map((property) => _buildPropertyCard(property)),
+                  ...filteredProperties
+                      .map((property) => _buildPropertyCard(property)),
                 ],
               ),
             ),
@@ -331,20 +356,37 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
         children: [
           Expanded(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
-                children: const [
-                  Icon(Icons.search, color: Color(0xFF64748B), size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Search properties...',
-                    style: TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 14,
+                children: [
+                  const Icon(Icons.search,
+                      color: Color(0xFF64748B), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        _searchQuery = value;
+                        _refilterProperties();
+                      },
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 14,
+                      ),
+                      decoration: const InputDecoration(
+                        isCollapsed: true,
+                        border: InputBorder.none,
+                        hintText: 'Search properties...',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -358,7 +400,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF92BBFF)],
+                  colors: [Color(0xFF0077B6), Color(0xFF92BBFF)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -397,7 +439,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
               child: SizedBox(
                 height: 200,
                 child: property.imageUrls.length > 1
@@ -411,18 +454,22 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                                 width: double.infinity,
                                 height: 200,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
                                   color: const Color(0xFFE2E8F0),
-                                  child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+                                  child: const Icon(Icons.image,
+                                      size: 80, color: Color(0xFF94A3B8)),
                                 ),
                               ),
                               Positioned(
                                 bottom: 8,
                                 right: 8,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.6),
+                                    color:
+                                        Colors.black.withValues(alpha: 0.6),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
@@ -444,9 +491,11 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                         width: double.infinity,
                         height: 200,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(
                           color: const Color(0xFFE2E8F0),
-                          child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+                          child: const Icon(Icons.image,
+                              size: 80, color: Color(0xFF94A3B8)),
                         ),
                       ),
               ),
@@ -470,14 +519,16 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF3C7),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.star, size: 14, color: Color(0xFFF59E0B)),
+                            const Icon(Icons.star,
+                                size: 14, color: Color(0xFFF59E0B)),
                             const SizedBox(width: 4),
                             Text(
                               property.rating.toString(),
@@ -495,7 +546,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 16, color: Color(0xFF64748B)),
+                      const Icon(Icons.location_on,
+                          size: 16, color: Color(0xFF64748B)),
                       const SizedBox(width: 4),
                       Text(
                         property.location,
@@ -517,15 +569,19 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      _buildPropertyFeature(Icons.bed, '${property.bedrooms} bed'),
+                      _buildPropertyFeature(
+                          Icons.bed, '${property.bedrooms} bed'),
                       const SizedBox(width: 16),
-                      _buildPropertyFeature(Icons.people, '${property.guests} guests'),
+                      _buildPropertyFeature(
+                          Icons.people, '${property.guests} guests'),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
-                    children: property.amenities.map((amenity) => _buildAmenityChip(amenity)).toList(),
+                    children: property.amenities
+                        .map((amenity) => _buildAmenityChip(amenity))
+                        .toList(),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -535,7 +591,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                         text: TextSpan(
                           children: [
                             TextSpan(
-                              text: 'RM ${property.pricePerNight.toStringAsFixed(0)}',
+                              text:
+                                  'RM ${property.pricePerNight.toStringAsFixed(0)}',
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
@@ -561,7 +618,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               title: const Text('Login Required'),
-                              content: const Text('Please login to book this property.'),
+                              content: const Text(
+                                  'Please login to book this property.'),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(context),
@@ -575,7 +633,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF0077B6),
                                   ),
-                                  child: const Text('Login'),
+                                  child: const Text('Login',
+                                      style: TextStyle(color: Colors.white)),
                                 ),
                               ],
                             ),
@@ -584,13 +643,14 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0077B6),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                         child: const Text(
-                          'Login',
+                          'Book Now',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -628,14 +688,14 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDE9FE),
+        color: const Color(0xFFE7F0FF),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         amenity,
         style: const TextStyle(
           fontSize: 12,
-          color: Color(0xFF6366F1),
+          color: Color(0xFF0077B6),
           fontWeight: FontWeight.w500,
         ),
       ),
@@ -645,242 +705,266 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   Widget _buildFilterSheet() {
     return StatefulBuilder(
       builder: (context, setModalState) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Filters',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
+        return SafeArea(
+          top: false,
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.75,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                Container(
                   padding: const EdgeInsets.all(16),
-                  children: [
-                    const Text(
-                      'Location',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedLocation,
-                      decoration: InputDecoration(
-                        hintText: 'Select location',
-                        filled: true,
-                        fillColor: const Color(0xFFF1F5F9),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Filters',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
                         ),
                       ),
-                      items: ['Miami Beach', 'Aspen', 'New York', 'Malibu', 'Lake Tahoe', 'Scottsdale']
-                          .map((location) => DropdownMenuItem(
-                                value: location,
-                                child: Text(location),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setModalState(() {
-                          selectedLocation = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Guests',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Adults', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.remove_circle_outline),
-                                    color: const Color(0xFF92BBFF),
-                                    onPressed: () {
-                                      if (adults > 1) {
-                                        setModalState(() => adults--);
-                                      }
-                                    },
-                                  ),
-                                  Text(
-                                    adults.toString(),
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.add_circle_outline),
-                                    color: const Color(0xFF92BBFF),
-                                    onPressed: () {
-                                      setModalState(() => adults++);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Children', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.remove_circle_outline),
-                                    color: const Color(0xFF92BBFF),
-                                    onPressed: () {
-                                      if (children > 0) {
-                                        setModalState(() => children--);
-                                      }
-                                    },
-                                  ),
-                                  Text(
-                                    children.toString(),
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.add_circle_outline),
-                                    color: const Color(0xFF92BBFF),
-                                    onPressed: () {
-                                      setModalState(() => children++);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Price Range (per night)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    RangeSlider(
-                      values: priceRange,
-                      min: 0,
-                      max: 500,
-                      divisions: 50,
-                      activeColor: const Color(0xFF92BBFF),
-                      labels: RangeLabels(
-                        'RM ${priceRange.start.round()}',
-                        'RM ${priceRange.end.round()}',
-                      ),
-                      onChanged: (values) {
-                        setModalState(() {
-                          priceRange = values;
-                        });
-                      },
-                    ),
-                    Text(
-                      'RM ${priceRange.start.round()} - RM ${priceRange.end.round()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _resetFilters,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF92BBFF),
-                          side: const BorderSide(color: Color(0xFF92BBFF)),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      const Text(
+                        'Location',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedLocation,
+                        decoration: InputDecoration(
+                          hintText: 'Select location',
+                          filled: true,
+                          fillColor: const Color(0xFFF1F5F9),
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
                         ),
-                        child: const Text(
-                          'Reset',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        items: [
+                          'Miami Beach',
+                          'Aspen',
+                          'New York',
+                          'Malibu',
+                          'Lake Tahoe',
+                          'Scottsdale'
+                        ]
+                            .map((location) => DropdownMenuItem(
+                                  value: location,
+                                  child: Text(location),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setModalState(() {
+                            selectedLocation = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Guests',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _applyFilters,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0077B6),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Adults',
+                                    style: TextStyle(
+                                        fontSize: 14, color: Color(0xFF64748B))),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons
+                                          .remove_circle_outline),
+                                      color: const Color(0xFF92BBFF),
+                                      onPressed: () {
+                                        if (adults > 1) {
+                                          setModalState(() => adults--);
+                                        }
+                                      },
+                                    ),
+                                    Text(
+                                      adults.toString(),
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.add_circle_outline),
+                                      color: const Color(0xFF92BBFF),
+                                      onPressed: () {
+                                        setModalState(() => adults++);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        child: const Text(
-                          'Apply Filters',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Children',
+                                    style: TextStyle(
+                                        fontSize: 14, color: Color(0xFF64748B))),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons
+                                          .remove_circle_outline),
+                                      color: const Color(0xFF92BBFF),
+                                      onPressed: () {
+                                        if (children > 0) {
+                                          setModalState(() => children--);
+                                        }
+                                      },
+                                    ),
+                                    Text(
+                                      children.toString(),
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.add_circle_outline),
+                                      color: const Color(0xFF92BBFF),
+                                      onPressed: () {
+                                        setModalState(() => children++);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Price Range (per night)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      RangeSlider(
+                        values: priceRange,
+                        min: 0,
+                        max: 500,
+                        divisions: 50,
+                        activeColor: const Color(0xFF92BBFF),
+                        labels: RangeLabels(
+                          'RM ${priceRange.start.round()}',
+                          'RM ${priceRange.end.round()}',
+                        ),
+                        onChanged: (values) {
+                          setModalState(() {
+                            priceRange = values;
+                          });
+                        },
+                      ),
+                      Text(
+                        'RM ${priceRange.start.round()} - RM ${priceRange.end.round()}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF64748B),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _resetFilters,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF92BBFF),
+                            side: const BorderSide(color: Color(0xFF92BBFF)),
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Reset',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _applyFilters,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0077B6),
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Apply Filters',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -928,16 +1012,20 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
+                color:
+                    isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
                 size: 24,
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
+                  color: isSelected
+                      ? const Color(0xFF92BBFF)
+                      : const Color(0xFF94A3B8),
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
             ],
@@ -948,7 +1036,6 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   }
 }
 
-// Property Detail Page for Not Logged In Users
 class PropertyDetailNotLoginPage extends StatelessWidget {
   final Property property;
 
@@ -963,7 +1050,7 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 300,
             pinned: true,
-                          backgroundColor: const Color(0xFF0077B6),
+            backgroundColor: const Color(0xFF0077B6),
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
@@ -971,7 +1058,8 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.arrow_back, color: Color(0xFF92BBFF)),
+                child:
+                    const Icon(Icons.arrow_back, color: Color(0xFF92BBFF)),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -983,9 +1071,11 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                         return Image.network(
                           property.imageUrls[index],
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
+                          errorBuilder:
+                              (context, error, stackTrace) => Container(
                             color: const Color(0xFFE2E8F0),
-                            child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+                            child: const Icon(Icons.image,
+                                size: 80, color: Color(0xFF94A3B8)),
                           ),
                         );
                       },
@@ -993,9 +1083,11 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                   : Image.network(
                       property.imageUrls[0],
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                      errorBuilder:
+                          (context, error, stackTrace) => Container(
                         color: const Color(0xFFE2E8F0),
-                        child: const Icon(Icons.image, size: 80, color: Color(0xFF94A3B8)),
+                        child: const Icon(Icons.image,
+                            size: 80, color: Color(0xFF94A3B8)),
                       ),
                     ),
             ),
@@ -1020,14 +1112,16 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF3C7),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.star, size: 16, color: Color(0xFFF59E0B)),
+                            const Icon(Icons.star,
+                                size: 16, color: Color(0xFFF59E0B)),
                             const SizedBox(width: 4),
                             Text(
                               property.rating.toString(),
@@ -1045,7 +1139,8 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 20, color: Color(0xFF64748B)),
+                      const Icon(Icons.location_on,
+                          size: 20, color: Color(0xFF64748B)),
                       const SizedBox(width: 4),
                       Text(
                         property.location,
@@ -1088,21 +1183,24 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                     spacing: 12,
                     runSpacing: 12,
                     children: property.amenities
-                        .map((amenity) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEDE9FE),
-                                borderRadius: BorderRadius.circular(20),
+                        .map(
+                          (amenity) => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE7F0FF),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              amenity,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF0077B6),
+                                fontWeight: FontWeight.w500,
                               ),
-                              child: Text(
-                                amenity,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF6366F1),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ))
+                            ),
+                          ),
+                        )
                         .toList(),
                   ),
                   const SizedBox(height: 32),
@@ -1116,11 +1214,14 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF92BBFF).withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: const Color(0xFF92BBFF).withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       children: [
-                        const Icon(Icons.lock_outline, size: 48, color: Color(0xFF92BBFF)),
+                        const Icon(Icons.lock_outline,
+                            size: 48, color: Color(0xFF92BBFF)),
                         const SizedBox(height: 16),
                         const Text(
                           'Login Required',
@@ -1149,7 +1250,8 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0077B6),
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
