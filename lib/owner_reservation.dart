@@ -204,7 +204,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                           onPressed: () => setState(() {}),
                           style:
                               TextButton.styleFrom(padding: EdgeInsets.zero),
-                          child: const Text('Go',
+                          child: const Text('Search',
                               style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,

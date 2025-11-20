@@ -310,7 +310,7 @@ class _OwnerPropertyListingPageState extends State<OwnerPropertyListingPage> {
                           style:
                               TextButton.styleFrom(padding: EdgeInsets.zero),
                           child: const Text(
-                            'Go',
+                            'Search',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
