@@ -86,6 +86,7 @@ flutter:
     - assets/zalema_homestay.jpg
     - assets/riverfront_apartment.jpg
     - assets/damai_beach.jpg
+    - assets/google_logo.png
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

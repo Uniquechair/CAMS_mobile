@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'owner_reservation.dart';  // <-- add this import
+import 'login_screen.dart';  // <-- add this import
 
 void main() {
   runApp(const CamsApp());
@@ -16,7 +16,7 @@ class CamsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const OwnerReservationPage(),   // <-- open this page directly
+      home: const LoginScreen(),   // <-- open this page directly
     );
   }
 }
