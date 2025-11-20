@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart';  // <-- add this import
+import 'onboarding_screen.dart';  // <-- add this import
 
 void main() {
   runApp(const CamsApp());
@@ -16,7 +16,7 @@ class CamsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const LoginScreen(),   // <-- open this page directly
+      home: const OnboardingScreen(),   // <-- open this page directly
     );
   }
 }
