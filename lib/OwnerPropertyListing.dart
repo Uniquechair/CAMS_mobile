@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'shared/bottom_navigation_bar.dart';
 import 'shared/navigation_menu.dart';
 import 'app.dart';
 
-class OwnerReservationPage extends StatefulWidget {
-  const OwnerReservationPage({super.key});
+class OwnerPropertyListingPage extends StatefulWidget {
+  const OwnerPropertyListingPage({super.key});
 
   @override
-  State<OwnerReservationPage> createState() => _OwnerReservationPageState();
+  State<OwnerPropertyListingPage> createState() =>
+      _OwnerPropertyListingPageState();
 }
 
-class _OwnerReservationPageState extends State<OwnerReservationPage> {
+class _OwnerPropertyListingPageState extends State<OwnerPropertyListingPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final TextEditingController _searchController = TextEditingController();
@@ -19,28 +19,64 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
   final Color brandBlue = const Color(0xFF4188FF);
 
+  // Status options for filter
   final List<String> _statusOptions = const [
     "All Statuses",
+    "Active",
+    "Inactive",
     "Pending",
-    "Accepted",
     "Rejected",
-    "Canceled",
-    "Paid",
-    "Expired",
   ];
 
-  final List<Map<String, dynamic>> _reservations = [];
+  // Hardcoded sample properties (you can replace with API later)
+  final List<Map<String, dynamic>> _properties = [
+    {
+      "pid": "P001",
+      "name": "Santubong Homestay",
+      "price": 165,
+      "cluster": "Santubong",
+      "status": "Active",
+      "imageAsset": "assets/santubong_homestay.jpg",
+    },
+    {
+      "pid": "P002",
+      "name": "Zalema Binti Leman Homestay",
+      "price": 120,
+      "cluster": "Kuching City",
+      "status": "Pending",
+      "imageAsset": "assets/zalema_homestay.jpg",
+      // you can add imageAsset later if you have one
+    },
+    {
+      "pid": "P003",
+      "name": "Riverfront Apartment",
+      "price": 220,
+      "cluster": "Waterfront",
+      "status": "Inactive",
+      "imageAsset": "assets/riverfront_apartment.jpg",
+    },
+    {
+      "pid": "P004",
+      "name": "Damai Beach Resort Room",
+      "price": 310,
+      "cluster": "Damai",
+      "status": "Rejected",
+      "imageAsset": "assets/damai_beach.jpg",
+    },
+  ];
 
-  List<Map<String, dynamic>> get _filteredReservations {
-    return _reservations.where((res) {
+  List<Map<String, dynamic>> get _filteredProperties {
+    return _properties.where((prop) {
       final statusMatch = _selectedStatus == "All Statuses" ||
-          res["status"].toLowerCase() == _selectedStatus.toLowerCase();
+          prop["status"].toString().toLowerCase() ==
+              _selectedStatus.toLowerCase();
 
-      final searchMatch = _searchController.text.isEmpty ||
-          res["name"]
-              .toString()
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
+      final query = _searchController.text.toLowerCase();
+      final searchMatch = query.isEmpty ||
+          prop["name"].toString().toLowerCase().contains(query) ||
+          prop["cluster"].toString().toLowerCase().contains(query) ||
+          prop["pid"].toString().toLowerCase().contains(query) ||
+          prop["price"].toString().toLowerCase().contains(query);
 
       return statusMatch && searchMatch;
     }).toList();
@@ -48,21 +84,100 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
+      case "active":
+        return Colors.green.shade700;
+      case "inactive":
+        return Colors.grey.shade600;
       case "pending":
         return Colors.orange.shade700;
-      case "accepted":
-        return Colors.green.shade700;
       case "rejected":
         return Colors.red.shade700;
-      case "canceled":
-        return Colors.grey.shade600;
-      case "paid":
-        return Colors.blue.shade700;
-      case "expired":
-        return Colors.black45;
       default:
         return Colors.grey.shade600;
     }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showPropertyActions(Map<String, dynamic> prop) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Icon(Icons.apartment, color: brandBlue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        prop["name"],
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                ListTile(
+                  leading: Icon(Icons.visibility_outlined, color: brandBlue),
+                  title: const Text("View details"),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showSnack("View details for ${prop["name"]}");
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.edit_outlined, color: brandBlue),
+                  title: const Text("Edit property"),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showSnack("Edit property ${prop["name"]}");
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline,
+                      color: Colors.redAccent),
+                  title: const Text("Remove property"),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showSnack("Remove property ${prop["name"]}");
+                    // later you can actually remove:
+                    // setState(() => _properties.remove(prop));
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -70,17 +185,11 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     return Scaffold(
       key: _scaffoldKey,
 
-      // LEFT DRAWER
       drawer: MoreMenuDrawer(
         role: UserRole.owner,
         onItemSelected: (value) {
           Navigator.pop(context);
-          if (value == "Reservation") {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const OwnerReservationPage()));
-          }
+          // Wire drawer nav later if needed
         },
       ),
 
@@ -88,9 +197,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
       body: Column(
         children: [
-          // -----------------------------------
-          // PREMIUM HEADER (updated padding)
-          // -----------------------------------
+          // HEADER
           Container(
             padding: const EdgeInsets.fromLTRB(16, 65, 16, 60),
             width: double.infinity,
@@ -133,7 +240,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "Reservations",
+                        "Property Listings",
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -143,7 +250,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        "Manage bookings",
+                        "Manage your properties",
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
@@ -157,9 +264,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
             ),
           ),
 
-          // -----------------------------------
-          // FLOATING SEARCH BAR
-          // -----------------------------------
+          // SEARCH BAR
           Transform.translate(
             offset: const Offset(0, -24),
             child: Padding(
@@ -184,7 +289,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                           controller: _searchController,
                           onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
-                            hintText: 'Search reservations...',
+                            hintText: 'Search properties...',
                             hintStyle: TextStyle(
                                 color: Colors.grey.shade400, fontSize: 15),
                             border: InputBorder.none,
@@ -204,11 +309,14 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                           onPressed: () => setState(() {}),
                           style:
                               TextButton.styleFrom(padding: EdgeInsets.zero),
-                          child: const Text('Go',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14)),
+                          child: const Text(
+                            'Go',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
                       )
                     ],
@@ -220,9 +328,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
           const SizedBox(height: 16),
 
-          // -----------------------------------
-          // FILTER SECTION
-          // -----------------------------------
+          // FILTER CARD
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
@@ -241,7 +347,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Filter',
+                  Text('Status',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -261,11 +367,15 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                             child: DropdownButton<String>(
                               value: _selectedStatus,
                               items: _statusOptions
-                                  .map((e) => DropdownMenuItem(
+                                  .map(
+                                    (e) => DropdownMenuItem(
                                       value: e,
-                                      child: Text(e,
-                                          style:
-                                              const TextStyle(fontSize: 14))))
+                                      child: Text(
+                                        e,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  )
                                   .toList(),
                               onChanged: (v) =>
                                   setState(() => _selectedStatus = v!),
@@ -287,11 +397,14 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                             child: const Padding(
                               padding: EdgeInsets.symmetric(
                                   horizontal: 20, vertical: 11),
-                              child: Text('Apply',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14)),
+                              child: Text(
+                                'Apply Filters',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -305,55 +418,52 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
           const SizedBox(height: 24),
 
-          // -----------------------------------
-          // RESULTS LIST
-          // -----------------------------------
+          // PROPERTY LIST
           Expanded(
-            child: _filteredReservations.isEmpty
+            child: _filteredProperties.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.inbox,
+                        Icon(Icons.home_outlined,
                             size: 56, color: Colors.grey.shade300),
                         const SizedBox(height: 12),
                         Text(
-                          "No reservations found",
+                          "No properties found",
                           style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500),
+                            color: Colors.grey.shade500,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredReservations.length,
+                    itemCount: _filteredProperties.length,
                     itemBuilder: (context, index) {
-                      final res = _filteredReservations[index];
-                      return _buildPremiumCard(res);
-                    }),
+                      final prop = _filteredProperties[index];
+                      return _buildPropertyCard(prop);
+                    },
+                  ),
           ),
         ],
       ),
 
-      // -----------------------------------
-      // BOTTOM NAVIGATION BAR
-      // -----------------------------------
       bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: 2,
+        selectedIndex: 1,
         role: UserRole.owner,
         scaffoldKey: _scaffoldKey,
-        onTap: (i) {},
+        onTap: (i) {
+          // Wire navigation later
+        },
       ),
     );
   }
 
-  // -----------------------------------
-  // PREMIUM CARD
-  // -----------------------------------
-  Widget _buildPremiumCard(Map<String, dynamic> res) {
+  // PROPERTY CARD + ACTION MENU
+  Widget _buildPropertyCard(Map<String, dynamic> prop) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -369,129 +479,128 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
       ),
       child: Column(
         children: [
-          // top accent bar
           Container(
             height: 5,
             decoration: BoxDecoration(
               gradient:
                   LinearGradient(colors: [brandBlue, const Color(0xFF2E5BC4)]),
               borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18)),
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+              ),
             ),
           ),
-
-          // card contents
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image + info row
+                Text(
+                  "PID: ${prop["pid"]}",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // IMAGE (asset if available, else placeholder)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        height: 100,
-                        width: 120,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(Icons.home,
-                            size: 40, color: Colors.grey.shade400),
-                      ),
+                      child: prop["imageAsset"] != null
+                          ? Image.asset(
+                              prop["imageAsset"],
+                              height: 90,
+                              width: 110,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (context, error, stackTrace) =>
+                                      Container(
+                                height: 90,
+                                width: 110,
+                                color: Colors.grey.shade200,
+                                child: const Icon(Icons.broken_image,
+                                    size: 36, color: Colors.grey),
+                              ),
+                            )
+                          : Container(
+                              height: 90,
+                              width: 110,
+                              color: Colors.grey.shade200,
+                              child: Icon(Icons.image,
+                                  size: 36, color: Colors.grey.shade400),
+                            ),
                     ),
                     const SizedBox(width: 14),
-
-                    // TEXT PART
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(res["property"],
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.2)),
+                          Text(
+                            prop["name"],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text(res["name"],
-                              style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 10),
-                          Text('RM ${res["price"]}',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: brandBlue,
-                                  fontSize: 16)),
+                          Text(
+                            "Cluster: ${prop["cluster"]}",
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'RM ${prop["price"]}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: brandBlue,
+                              fontSize: 16,
+                            ),
+                          ),
                         ],
                       ),
-                    )
+                    ),
                   ],
                 ),
-
-                const SizedBox(height: 16),
-
-                // Dates + status row
+                const SizedBox(height: 14),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Dates
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _info('Check-In', res['checkIn']),
-                          _info('Check-Out', res['checkOut']),
-                        ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 6, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color:
+                            _statusColor(prop["status"]).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Text(
+                        prop["status"],
+                        style: TextStyle(
+                          color: _statusColor(prop["status"]),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-
-                    // Status + menu
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 7, horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: _statusColor(res["status"])
-                                .withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: Text(
-                            res['status'],
-                            style: TextStyle(
-                                color: _statusColor(res["status"]),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Icon(Icons.more_vert,
-                            color: Colors.grey.shade500, size: 20),
-                      ],
-                    )
+                    IconButton(
+                      icon: Icon(Icons.more_vert,
+                          color: Colors.grey.shade500, size: 20),
+                      onPressed: () => _showPropertyActions(prop),
+                    ),
                   ],
-                )
+                ),
               ],
             ),
-          )
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _info(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
-      child: Text(
-        "$label: $value",
-        style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
       ),
     );
   }

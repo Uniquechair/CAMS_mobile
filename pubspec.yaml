@@ -82,6 +82,12 @@ flutter:
     - assets/ob2.png
     - assets/ob3.png
     - assets/bg_wave.png
+    - assets/santubong_homestay.jpg
+    - assets/zalema_homestay.jpg
+    - assets/riverfront_apartment.jpg
+    - assets/damai_beach.jpg
+
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
