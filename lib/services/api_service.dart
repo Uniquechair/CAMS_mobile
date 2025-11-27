@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String _base = 'http://165.22.103.232:3000';
+  static const String _base = 'https://cams-backend.vercel.app';
   
   // Set to true to use mock data instead of real API calls
   static const bool _useMockData = false; // Using real backend
