@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../api.dart' as api;
 import '../services/session.dart';
 import '../widgets/hs_text_field.dart';
@@ -22,6 +23,125 @@ class _LoginScreenState extends State<LoginScreen> {
   final _password = TextEditingController();
   bool _loading = false;
   String? _msg;
+
+  bool _obscure = true;
+  bool _googleLoading = false;
+
+  // Google Sign-In
+  Future<void> _googleSignIn() async {
+    setState(() {
+      _googleLoading = true;
+      _msg = null;
+    });
+
+    try {
+      print('DEBUG: Google Sign-In attempt started');
+
+      // Initialize Google Sign-In
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+      );
+
+      // Sign in with Google
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // User cancelled the sign-in
+        print('DEBUG: Google Sign-In cancelled by user');
+        setState(() {
+          _googleLoading = false;
+        });
+        return;
+      }
+
+      print('DEBUG: Google Sign-In successful, email: ${googleUser.email}');
+
+      // Get authentication details
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // Get the ID token
+      final String? idToken = googleAuth.idToken;
+      
+      if (idToken == null) {
+        throw Exception('Failed to get Google ID token');
+      }
+
+      print('DEBUG: Got Google ID token, sending to backend');
+
+      // Send token to backend
+      final response = await api.googleLogin(idToken);
+      
+      print('DEBUG: Google Login API response: $response');
+
+      // Validate response
+      if (response['success'] != true) {
+        throw Exception(response['message'] ?? 'Google login failed');
+      }
+
+      final userid = (response['userid'] as num).toInt();
+      final usergroup = (response['usergroup'] as String).trim().toLowerCase();
+      final uactivation = (response['uactivation'] as String).trim().toLowerCase();
+      final username = response['username'] as String? ?? googleUser.email.split('@')[0];
+      
+      print('DEBUG: Parsed userid: $userid, usergroup: $usergroup, uactivation: $uactivation, username: $username');
+
+      // Save session data
+      await Session.saveLogin(
+        userid: userid,
+        usergroup: usergroup,
+        uactivation: uactivation,
+        username: username,
+      );
+      print('DEBUG: Session saved successfully');
+
+      if (!mounted) {
+        print('DEBUG: Widget not mounted after session save');
+        return;
+      }
+
+      // Clear loading state before navigation
+      setState(() => _googleLoading = false);
+
+      // Unfocus keyboard
+      FocusScope.of(context).unfocus();
+
+      // Navigate to role-based dashboard
+      try {
+        final nav = appNavigatorKey.currentState!;
+        nav.popUntil((r) => r.isFirst);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        await nav.pushReplacementNamed('/after-login');
+        print('DEBUG: Navigation to /after-login completed');
+      } catch (navErr) {
+        print('DEBUG: Navigation failed: $navErr');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Navigation error: $navErr')),
+          );
+        }
+      }
+    } catch (e) {
+      print('DEBUG: Google Sign-In error: $e');
+      if (mounted) {
+        setState(() {
+          _msg = e.toString().replaceAll('Exception: ', '');
+          _googleLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _msg ?? 'Google Sign-In failed',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // SUBMIT LOGIN
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -138,84 +258,244 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF5B8DEF), // Dark blue
-              Color(0xFFE7F0FF), // Light blue
+              Color(0xFF5B8DEF), // blue
+              Color(0xFFE7F0FF), // very light blue
             ],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                child: Card(
-                  color: Colors.white,
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        children: [
-                          Text('Hello Sarawak!',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w800, color: const Color(0xFF0077B6),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text('Sign in to continue',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54)),
-                          const SizedBox(height: 18),
-
-                          HSTextField(controller: _username, label: 'Username'),
-                          const SizedBox(height: 12),
-                          HSTextField(controller: _password, label: 'Password', obscure: true),
-                          const SizedBox(height: 16),
-                          if (_msg != null) ...[
-                            Text(
-                              _msg!,
-                              style: TextStyle(color: Theme.of(context).colorScheme.error),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          SizedBox(
-                            width: double.infinity, height: 50,
-                            child: FilledButton(
-                              onPressed: _loading ? null : _submit,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF0077B6),
-                              ),
-                              child: _loading
-                                  ? const CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0077B6)),
-                                    )
-                                  : const Text('Sign In'),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text("Don't have an account? "),
-                              GestureDetector(
-                                onTap: () => Navigator.pushReplacementNamed(context, '/signup'),
-                                child: const Text('Create one',
-                                    style: TextStyle(color: Color(0xFF0077B6), fontWeight: FontWeight.w700)),
-                              ),
-                            ],
-                          ),
-                        ],
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       ),
+                    ],
+                  ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        // TITLE
+                        const Text(
+                          "Hello Sarawak!",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F497B),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          "Sign in to continue",
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 14),
+                        ),
+
+                        const SizedBox(height: 26),
+
+                        // USERNAME FIELD
+                        HSTextField(
+                          controller: _username,
+                          label: 'Username',
+                        ),
+                        const SizedBox(height: 14),
+
+                        // PASSWORD FIELD
+                        TextFormField(
+                          controller: _password,
+                          obscureText: _obscure,
+                          decoration: InputDecoration(
+                            labelText: "Password",
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _obscure = !_obscure),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        if (_msg != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              _msg!,
+                              style: TextStyle(
+                                  color:
+                                      Theme.of(context).colorScheme.error),
+                            ),
+                          ),
+
+                        // SIGN IN BUTTON
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: FilledButton(
+                            onPressed: _loading ? null : _submit,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF0077B6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            child: _loading
+                                ? const CircularProgressIndicator(
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  )
+                                : const Text(
+                                    "Sign In",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // --- DIVIDER ---
+                        Row(
+                          children: [
+                            Expanded(
+                                child: Divider(
+                                    thickness: 1,
+                                    color: Colors.grey.shade300)),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                "or continue with",
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600),
+                              ),
+                            ),
+                            Expanded(
+                                child: Divider(
+                                    thickness: 1,
+                                    color: Colors.grey.shade300)),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // --- GOOGLE SIGN IN BUTTON ---
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: (_googleLoading || _loading) ? null : _googleSignIn,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              side: BorderSide(
+                                  color: Colors.grey.shade300),
+                            ),
+                            child: _googleLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF0077B6),
+                                      ),
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Image.asset(
+                                        'assets/google_logo.png',
+                                        height: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      const Text(
+                                        "Sign in with Google",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        const SizedBox(height: 22),
+
+                        // --- CREATE ACCOUNT ---
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Don't have an account?",
+                              style:
+                                  TextStyle(color: Colors.grey.shade600),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pushReplacementNamed(
+                                  context, '/signup'),
+                              child: const Text(
+                                "Create one",
+                                style: TextStyle(
+                                  color: Color(0xFF0077B6),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          ],
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // --- FORGOT PASSWORD ---
+                        Center(
+                          child: TextButton(
+                            onPressed: () => Navigator.pushNamed(
+                                context, '/forget-password'),
+                            child: const Text(
+                              "Forgot Password?",
+                              style: TextStyle(
+                                color: Color(0xFF0077B6),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        )
+                      ],
                     ),
                   ),
                 ),

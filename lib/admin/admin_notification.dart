@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
+import '../services/session.dart';
+import '../shared/bottom_navigation_bar.dart';
+import '../shared/navigation_menu.dart' as nav;
+import '../app.dart';
+import '../api.dart' as api;
 import 'admin_dashboard.dart';
 
 class AdminNotifications extends StatefulWidget {
@@ -14,143 +19,133 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> allNotifications = [];
 
   @override
   void initState() {
     super.initState();
     _notificationInit = NotificationService().initialize();
+    _loadNotifications();
   }
 
-  List<Map<String, dynamic>> allNotifications = [
-    {
-      'id': 1,
-      'type': 'payment_received',
-      'title': 'Payment Received',
-      'message':
-          'Customer John Doe has completed payment of RM 450.00 for Seaside Villa booking (Check-in: 12/15/2025).',
-      'customerName': 'John Doe',
-      'propertyName': 'Seaside Villa',
-      'amount': 450.00,
-      'time': '30 minutes ago',
-      'isRead': false,
-      'priority': 'high',
-    },
-    {
-      'id': 2,
-      'type': 'room_enquiry',
-      'title': 'Room Enquiry - Fully Booked',
-      'message':
-          'Customer Sarah Lee enquired about Mountain Retreat for dates 12/20/2025 - 12/25/2025. Property is fully booked.',
-      'customerName': 'Sarah Lee',
-      'propertyName': 'Mountain Retreat',
-      'dates': '12/20/2025 - 12/25/2025',
-      'time': '1 hour ago',
-      'isRead': false,
-      'priority': 'medium',
-    },
-    {
-      'id': 3,
-      'type': 'broadcast_suggestion',
-      'title': 'Broadcast Suggestion',
-      'message':
-          'Admin Mike suggested alternative property for customer Alex Chen. Beach House (3BR, 2BA) available for 12/18/2025 - 12/22/2025.',
-      'broadcastBy': 'Admin Mike',
-      'customerName': 'Alex Chen',
-      'propertyName': 'Beach House',
-      'details': '3BR, 2BA',
-      'dates': '12/18/2025 - 12/22/2025',
-      'time': '2 hours ago',
-      'isRead': false,
-      'priority': 'high',
-      'canPickup': true,
-    },
-    {
-      'id': 4,
-      'type': 'payment_received',
-      'title': 'Payment Received',
-      'message':
-          'Customer Emma Wilson has completed payment of RM 320.00 for Urban Loft booking.',
-      'customerName': 'Emma Wilson',
-      'propertyName': 'Urban Loft',
-      'amount': 320.00,
-      'time': '3 hours ago',
-      'isRead': true,
-      'priority': 'high',
-    },
-    {
-      'id': 5,
-      'type': 'broadcast_suggestion',
-      'title': 'Broadcast Suggestion',
-      'message':
-          'Moderator Jane broadcast: Customer David needs 4BR property for family vacation. City Villa available.',
-      'broadcastBy': 'Moderator Jane',
-      'customerName': 'David Brown',
-      'propertyName': 'City Villa',
-      'details': '4BR, 3BA, Pool',
-      'dates': '01/05/2026 - 01/10/2026',
-      'time': '5 hours ago',
-      'isRead': true,
-      'priority': 'medium',
-      'canPickup': true,
-    },
-    {
-      'id': 6,
-      'type': 'room_enquiry',
-      'title': 'Room Enquiry - Fully Booked',
-      'message':
-          'Customer Lisa Chen enquired about Luxury Suite. All rooms booked for requested period.',
-      'customerName': 'Lisa Chen',
-      'propertyName': 'Luxury Suite',
-      'dates': '01/15/2026 - 01/18/2026',
-      'time': '1 day ago',
-      'isRead': true,
-      'priority': 'low',
-    },
-  ];
+  Future<void> _loadNotifications() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final notifications = await api.fetchNotifications();
+      setState(() {
+        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        _isLoading = false;
+      });
+    } catch (error) {
+      print('Error loading notifications: $error');
+      setState(() {
+        _isLoading = false;
+        allNotifications = [];
+      });
+    }
+  }
 
   List<Map<String, dynamic>> get filteredNotifications {
     if (_selectedFilter == 'All') {
       return allNotifications;
     } else if (_selectedFilter == 'Unread') {
-      return allNotifications.where((n) => !n['isRead']).toList();
+      return allNotifications.where((n) => !(n['isRead'] ?? false)).toList();
     }
     return allNotifications.where((n) => n['type'] == _selectedFilter).toList();
   }
 
-  int get unreadCount => allNotifications.where((n) => !n['isRead']).length;
-
-  void _markAsRead(int id) {
-    setState(() {
-      final notification =
-          allNotifications.firstWhere((n) => n['id'] == id);
-      notification['isRead'] = true;
-    });
+  int get unreadCount {
+    return allNotifications.where((n) => !(n['isRead'] ?? false)).length;
   }
 
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in allNotifications) {
-        notification['isRead'] = true;
+  Future<void> _markAsRead(int id) async {
+    try {
+      final success = await api.markNotificationAsRead(id);
+      if (success) {
+        setState(() {
+          final notification = allNotifications.firstWhere((n) => n['id'] == id);
+          notification['isRead'] = true;
+        });
       }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('All notifications marked as read'),
-        backgroundColor: Color(0xFF468FAF),
-      ),
-    );
+    } catch (error) {
+      print('Error marking notification as read: $error');
+      setState(() {
+        final notification = allNotifications.firstWhere((n) => n['id'] == id);
+        notification['isRead'] = true;
+      });
+    }
   }
 
-  void _deleteNotification(int id) {
-    setState(() {
-      allNotifications.removeWhere((n) => n['id'] == id);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notification deleted'),
-        backgroundColor: Color(0xFF468FAF),
-      ),
-    );
+  Future<void> _markAllAsRead() async {
+    try {
+      final success = await api.markAllNotificationsAsRead();
+      if (success) {
+        setState(() {
+          for (var notification in allNotifications) {
+            notification['isRead'] = true;
+          }
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('All notifications marked as read'),
+              backgroundColor: Color(0xFF468FAF),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      print('Error marking all notifications as read: $error');
+      setState(() {
+        for (var notification in allNotifications) {
+          notification['isRead'] = true;
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All notifications marked as read'),
+            backgroundColor: Color(0xFF468FAF),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteNotification(int id) async {
+    try {
+      final success = await api.deleteNotification(id);
+      if (success) {
+        setState(() {
+          allNotifications.removeWhere((n) => n['id'] == id);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification deleted'),
+              backgroundColor: Color(0xFF468FAF),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      print('Error deleting notification: $error');
+      setState(() {
+        allNotifications.removeWhere((n) => n['id'] == id);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notification deleted'),
+            backgroundColor: Color(0xFF468FAF),
+          ),
+        );
+      }
+    }
   }
 
   void _pickupSuggestion(Map<String, dynamic> notification) {
@@ -256,219 +251,97 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     );
   }
 
-  void _navigateToPage(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
+  void _handleBottomNavTap(int index) {
+    if (index == 4) {
+      // More button - handled by SharedBottomNavigationBar to open drawer
+      return;
+    }
+    if (index == 3) {
+      Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (index == 1) {
+      Navigator.of(context).pushReplacementNamed('/manage-services');
+      return;
+    }
+    if (index == 2) {
+      Navigator.of(context).pushReplacementNamed('/manage-booking');
+      return;
+    }
     if (index == 0) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const AdminDashboard()),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Dashboard page'),
-          backgroundColor: Color(0xFF468FAF),
-        ),
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
+      return;
     }
+    setState(() => _selectedIndex = index);
   }
 
-  Widget _buildDemoSection() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _showDemoDialog,
-          icon: const Icon(Icons.notifications_active, size: 20),
-          label: const Text(
-            'Demo Push Notifications',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0077B6),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 2,
-          ),
-        ),
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    if (label == 'Dashboard') {
+      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
+      return;
+    }
+    if (label == 'Profile') {
+      Navigator.of(context).pushReplacementNamed('/profile');
+      return;
+    }
+    if (label == 'User Management') {
+      // Navigate to user management page with admin role
+      Navigator.of(context).pushReplacementNamed('/user-management', arguments: AppRole.admin);
+      return;
+    }
+    if (label == 'Properties') {
+      Navigator.of(context).pushReplacementNamed('/manage-services');
+      return;
+    }
+    if (label == 'Bookings') {
+      Navigator.of(context).pushReplacementNamed('/manage-booking');
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
+        backgroundColor: const Color(0xFF468FAF),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
 
-  void _showDemoDialog() {
-    showDialog(
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text(
-                    'Push Notification Demo',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Choose a notification type to send',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildDemoDialogButton(
-                'Payment Received',
-                'Customer completed payment for booking',
-                Icons.payment,
-                const Color(0xFF10B981),
-                () => _sendDemoNotification('payment_received'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Room Enquiry',
-                'Customer enquired about fully booked property',
-                Icons.help_outline,
-                const Color(0xFFF59E0B),
-                () => _sendDemoNotification('room_enquiry'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Broadcast Suggestion',
-                'Another admin suggested alternative property',
-                Icons.campaign,
-                const Color(0xFF8B5CF6),
-                () => _sendDemoNotification('broadcast_suggestion'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Logout', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
           ),
-        ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
       ),
     );
-  }
 
-  Widget _buildDemoDialogButton(
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed,
-  ) {
-    return InkWell(
-      onTap: () {
-        Navigator.pop(context);
-        onPressed();
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: color),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _sendDemoNotification(String type) async {
-    await _notificationInit;
-    final notifications = {
-      'payment_received': {
-        'title': 'Payment Received 💰',
-        'body': 'Customer John Doe completed payment of RM 450.00',
-        'id': 101,
-      },
-      'room_enquiry': {
-        'title': 'Room Enquiry',
-        'body': 'Customer enquired about fully booked property',
-        'id': 102,
-      },
-      'broadcast_suggestion': {
-        'title': 'New Broadcast Suggestion',
-        'body': 'Admin suggested alternative property for customer',
-        'id': 103,
-      },
-    };
-
-    final notification = notifications[type];
-    if (notification != null) {
-      await NotificationService().showNotification(
-        id: notification['id'] as int,
-        title: notification['title'] as String,
-        body: notification['body'] as String,
-        payload: type,
-        type: type,
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${notification['title']} sent!'),
-          backgroundColor: const Color(0xFF468FAF),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    if (confirmed == true) {
+      // Clear the session data
+      await Session.clear();
+      if (mounted) {
+        // Navigate back to the before-login screen
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
+      }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -476,28 +349,51 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       key: _scaffoldKey,
       backgroundColor: const Color(0xFFE7F0FF),
       appBar: _buildAppBar(),
-      drawer: _buildDrawer(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildFilterSection(),
-            Expanded(
-              child: filteredNotifications.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredNotifications.length,
-                      itemBuilder: (context, index) {
-                        return _buildNotificationCard(
-                            filteredNotifications[index]);
-                      },
-                    ),
-            ),
-            _buildDemoSection(),
-          ],
-        ),
+      endDrawer: MoreMenuDrawer(
+        role: nav.UserRole.admin,
+        onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadNotifications,
+                color: const Color(0xFF649EFF),
+                backgroundColor: Colors.white,
+                strokeWidth: 3.0,
+                child: Column(
+                  children: [
+                    _buildFilterSection(),
+                    Expanded(
+                      child: filteredNotifications.isEmpty
+                          ? SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                              child: SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.6,
+                                child: _buildEmptyState(),
+                              ),
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                              padding: const EdgeInsets.all(16),
+                              itemCount: filteredNotifications.length,
+                              itemBuilder: (context, index) {
+                                return _buildNotificationCard(
+                                    filteredNotifications[index]);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: nav.UserRole.admin,
+      ),
     );
   }
 
@@ -516,8 +412,6 @@ class _AdminNotificationsState extends State<AdminNotifications> {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child:
-                const Icon(Icons.notifications, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -547,13 +441,13 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.notifications_outlined,
-              color: Color(0xFF64748B)),
-          onPressed: () {},
+          icon: const Icon(Icons.refresh, color: Color(0xFF64748B)),
+          onPressed: _loadNotifications,
+          tooltip: 'Refresh notifications',
         ),
         IconButton(
           icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-          onPressed: () {},
+          onPressed: _handleLogout,
         ),
       ],
     );
@@ -1093,196 +987,4 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     );
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
-      child: Container(
-        color: const Color(0xFF1E293B),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF0077B6), Color(0xFF649EFF)],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.supervised_user_circle,
-                        color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Admin',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildDrawerItem(Icons.dashboard, 'Dashboard', false),
-                  _buildDrawerItem(Icons.people, 'Customer', false),
-                  _buildDrawerItem(Icons.apartment, 'PropertyListing', false),
-                  _buildDrawerItem(Icons.calendar_today, 'Reservation', false),
-                  _buildDrawerItem(Icons.receipt_long, 'BooknPayLog', false),
-                  _buildDrawerItem(Icons.history, 'AuditTrails', false),
-                  _buildDrawerItem(Icons.trending_up, 'Finance', false),
-                  _buildDrawerItem(Icons.person, 'Profile', false),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEF4444),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text(
-                      'Logout',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem(IconData icon, String title, bool isSelected) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? Colors.white.withValues(alpha: 0.1)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? const Color(0xFF649EFF) : Colors.transparent,
-          width: 2,
-        ),
-      ),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: Colors.white,
-          size: 24,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-        onTap: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Navigating to $title')),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomNavItem(Icons.dashboard, 'Dashboard', 0),
-              _buildBottomNavItem(Icons.room_service, 'Properties', 1),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
-              _buildBottomNavItem(Icons.person, 'Profile', 3),
-              _buildBottomNavItem(Icons.more_horiz, 'More', 4),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          if (index == 4) {
-            _scaffoldKey.currentState?.openDrawer();
-          } else {
-            _navigateToPage(index);
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? const Color(0xFF649EFF)
-                    : const Color(0xFF94A3B8),
-                size: 24,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected
-                      ? const Color(0xFF649EFF)
-                      : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

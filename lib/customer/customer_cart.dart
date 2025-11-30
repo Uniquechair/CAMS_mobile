@@ -3,6 +3,7 @@ import 'customer_rooms.dart';
 import 'customer_bookings.dart';
 import '../api.dart' as api;
 import '../services/session.dart';
+import '../services/paypal_service.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -122,10 +123,21 @@ class _CustomerCartState extends State<CustomerCart> {
 
         final status = (item['reservationstatus'] ?? 'Pending').toString().toLowerCase();
         final isPending = status == 'pending';
+        final isEnquiry = status == 'enquiry';
         final isFuture = checkoutDateTime != null && (checkoutDateTime.isAfter(todayOnly) || checkoutDateTime.isAtSameMomentAs(todayOnly));
 
-        // Cart: Only pending reservations with future checkout dates
-        if (isPending && isFuture) {
+        // Cart: Pending and Enquiry reservations with future checkout dates
+        if ((isPending || isEnquiry) && isFuture) {
+          // Get propertyid from various possible field names
+          int? propertyId;
+          if (item['propertyid'] != null) {
+            propertyId = item['propertyid'] is int ? item['propertyid'] : int.tryParse(item['propertyid'].toString());
+          } else if (item['propertyId'] != null) {
+            propertyId = item['propertyId'] is int ? item['propertyId'] : int.tryParse(item['propertyId'].toString());
+          } else if (item['property_id'] != null) {
+            propertyId = item['property_id'] is int ? item['property_id'] : int.tryParse(item['property_id'].toString());
+          }
+          
           loadedCartItems.add({
             'id': item['reservationid'].toString(),
             'propertyName': item['propertyaddress'] ?? 'Property',
@@ -138,6 +150,7 @@ class _CustomerCartState extends State<CustomerCart> {
             'imageUrl': imageUrl,
             'imageBytes': imageBytes,
             'reservationid': item['reservationid'],
+            'propertyid': propertyId,
             'rawCheckIn': checkInDate,
             'rawCheckOut': checkOutDate,
           });
@@ -275,16 +288,12 @@ class _CustomerCartState extends State<CustomerCart> {
     });
 
     if (index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const RoomsPage()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Rooms page'),
-          backgroundColor: Color(0xFF468FAF),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Navigate to dashboard and clear stack so no back button appears
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+    } else if (index == 2) {
+      Navigator.of(context).pushReplacementNamed('/customer-bookings');
     } else if (index == 3) {
-      Navigator.pushNamed(context, '/profile');
+      Navigator.of(context).pushReplacementNamed('/profile');
     }
   }
 
@@ -315,7 +324,7 @@ class _CustomerCartState extends State<CustomerCart> {
     if (confirmed == true) {
       await Session.clear();
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -524,7 +533,7 @@ class _CustomerCartState extends State<CustomerCart> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
+                            onPressed: () async {
                               Navigator.pop(context);
                               if (selected == 0) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -534,12 +543,8 @@ class _CustomerCartState extends State<CustomerCart> {
                                   ),
                                 );
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Redirecting to PayPal...'),
-                                    backgroundColor: Color(0xFF468FAF),
-                                  ),
-                                );
+                                // PayPal payment
+                                _handlePayPalPayment(item);
                               }
                             },
                             icon: const Icon(Icons.credit_card, size: 18),
@@ -572,6 +577,86 @@ class _CustomerCartState extends State<CustomerCart> {
         Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
     );
+  }
+
+  Future<void> _handlePayPalPayment(Map<String, dynamic> item) async {
+    try {
+      final reservationId = item['reservationid'] as int;
+      final propertyId = item['propertyid'] as int? ?? 
+                        item['propertyId'] as int? ?? 
+                        0;
+      final amount = (item['price'] as num).toDouble();
+      
+      if (propertyId == 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Property ID not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      final result = await PayPalService.showPayPalPayment(
+        context: context,
+        reservationId: reservationId,
+        propertyId: propertyId,
+        amount: amount,
+        currency: 'MYR',
+        propertyName: item['propertyName'] ?? 'Property',
+        checkIn: item['checkIn'] ?? '-',
+        checkOut: item['checkOut'] ?? '-',
+      );
+
+      if (!mounted) return;
+
+      if (result != null && result['status'] == 'success') {
+        // Payment successful
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Reload cart data
+        _loadCartData();
+      } else if (result != null && result['status'] == 'cancelled') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment was cancelled'),
+            backgroundColor: Color(0xFF468FAF),
+          ),
+        );
+      }
+    } catch (error) {
+      print('PayPal payment error: $error');
+      if (!mounted) return;
+      
+      String errorMessage = 'Payment error occurred';
+      String errorStr = error.toString().toLowerCase();
+      
+      if (errorStr.contains('paypal integration not available') ||
+          errorStr.contains('endpoint not found') || 
+          errorStr.contains('html') ||
+          errorStr.contains('backend may not be configured') ||
+          errorStr.contains('failed to get paypal') ||
+          errorStr.contains('no order id returned') ||
+          errorStr.contains('404')) {
+        errorMessage = 'PayPal integration not available. Please contact support.';
+      } else {
+        errorMessage = 'Payment error: ${error.toString()}';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   void _showCancelDialog(String bookingId) {
@@ -887,12 +972,21 @@ class _CustomerCartState extends State<CustomerCart> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showPaymentDialog(item),
+                    onPressed: (item['status']?.toString().toLowerCase() == 'enquiry')
+                        ? null
+                        : () => _showPaymentDialog(item),
                     icon: const Icon(Icons.credit_card, size: 18),
-                    label: const Text('Proceed to Payment', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                    label: Text(
+                      (item['status']?.toString().toLowerCase() == 'enquiry')
+                          ? 'Waiting for Approval'
+                          : 'Proceed to Payment',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
-                      backgroundColor: const Color(0xFF0077B6),
+                      backgroundColor: (item['status']?.toString().toLowerCase() == 'enquiry')
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF0077B6),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1048,7 +1142,7 @@ class _CustomerCartState extends State<CustomerCart> {
               (value) => setState(() => sortOrder = value!)),
           const SizedBox(height: 16),
           _buildDropdown('Filter By Status:', Icons.filter_list, filterStatus,
-              ['All Statuses', 'Pending', 'Canceled', 'Rejected', 'Paid', 'Accepted'],
+              ['All Statuses', 'Pending', 'Enquiry', 'Canceled', 'Rejected', 'Paid', 'Accepted'],
               (value) => setState(() => filterStatus = value!)),
           const SizedBox(height: 16),
           _buildDropdown('Date Range:', Icons.calendar_today, dateRange,
@@ -1147,6 +1241,10 @@ class _CustomerCartState extends State<CustomerCart> {
         color = const Color(0xFFF59E0B);
         bgColor = const Color(0xFFFEF3C7);
         break;
+      case 'Enquiry':
+        color = const Color(0xFF0077B6);
+        bgColor = const Color(0xFFE7F0FF);
+        break;
       case 'Canceled':
       case 'Rejected':
         color = const Color(0xFFEF4444);
@@ -1202,20 +1300,7 @@ class _CustomerCartState extends State<CustomerCart> {
     final isSelected = _selectedIndex == index;
     return Expanded(
       child: InkWell(
-        onTap: () {
-          if (index == 2) {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const CustomerBookings()));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Navigate to Bookings page'),
-                backgroundColor: Color(0xFF468FAF),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          } else {
-            _navigateToPage(index);
-          }
-        },
+        onTap: () => _navigateToPage(index),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),

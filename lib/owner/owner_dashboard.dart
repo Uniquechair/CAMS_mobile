@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/session.dart';
-import '../services/rbac_service.dart';
+import '../services/rbac_service.dart' as rbac;
 import '../api.dart' as api;
+import '../shared/navigation_menu.dart' as nav;
+import '../shared/bottom_navigation_bar.dart';
+import '../app.dart';
+import 'owner_property_listing.dart';
+import 'owner_reservation.dart';
 
 class OwnerDashboard extends StatefulWidget {
   const OwnerDashboard({super.key});
@@ -161,7 +166,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     final userid = await Session.getUserId();
     if (userid != null) {
       try {
-        final occupancyData = await api.fetchOccupancyRate(userid);
+        final occupancyData = await api.fetchOccupancyRate(userid, paidOnly: true);
         print('OwnerDashboard: Occupancy data structure: ${occupancyData.keys.toList()}');
         
         double occupancyRate = 0.0;
@@ -201,7 +206,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       }
 
       try {
-        final revPARData = await api.fetchRevPAR(userid);
+        final revPARData = await api.fetchRevPAR(userid, paidOnly: true);
         
         double revPAR = 0.0;
         if (revPARData['monthlyData'] != null && revPARData['monthlyData'] is List) {
@@ -227,7 +232,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       }
 
       try {
-        final financeData = await api.fetchFinance(userid);
+        final financeData = await api.fetchFinance(userid, paidOnly: true);
         
         double revenue = 0.0;
         if (financeData['monthlyData'] != null && financeData['monthlyData'] is List) {
@@ -250,7 +255,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       }
 
       try {
-        final satisfactionData = await api.fetchGuestSatisfactionScore(userid);
+        final satisfactionData = await api.fetchGuestSatisfactionScore(userid, paidOnly: true);
         
         double satisfaction = 0.0;
         if (satisfactionData['monthlyData'] != null && satisfactionData['monthlyData'] is List) {
@@ -312,7 +317,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     await Session.clear();
     if (mounted) {
       // Navigate back to the login screen and remove all previous routes
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -352,7 +357,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     ),
                   ),
                   Text(
-                    'Welcome, ${_currentUserRole != null ? RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
+                    'Welcome, ${_currentUserRole != null ? rbac.RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
                     style: const TextStyle(
                       color: Color(0xFF64748B),
                       fontSize: 12,
@@ -366,16 +371,17 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
-            onPressed: () {},
-          ),
-          IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
             onPressed: _handleLogout,
           ),
         ],
       ),
-      drawer: _buildDrawer(),
+      endDrawer: MoreMenuDrawer(
+        role: nav.UserRole.owner,
+        onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
+        currentPageLabel: 'Dashboard',
+      ),
       body: RefreshIndicator(
         onRefresh: _loadDashboardStats,
         color: const Color(0xFF0077B6),
@@ -411,7 +417,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: nav.UserRole.owner,
+      ),
     );
   }
 
@@ -672,198 +683,66 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
-      child: Container(
-        color: const Color(0xFF1E293B),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFF4188FF)],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.admin_panel_settings, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Owner',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildDrawerItem(Icons.dashboard, 'Dashboard', true),
-                  _buildDrawerItem(Icons.people, 'Customer', false),
-                  _buildDrawerItem(Icons.admin_panel_settings, 'Administrator/Moderator', false),
-                  _buildDrawerItem(Icons.apartment, 'PropertyListing', false),
-                  _buildDrawerItem(Icons.calendar_today, 'Reservation', false),
-                  _buildDrawerItem(Icons.receipt_long, 'BooknPayLog', false),
-                  _buildDrawerItem(Icons.trending_up, 'Finance', false),
-                  _buildDrawerItem(Icons.history, 'AuditTrails', false),
-                  _buildDrawerItem(Icons.location_on_outlined, 'Cluster', false),
-                  _buildDrawerItem(Icons.person, 'Profile', false),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: _handleLogout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0077B6),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text(
-                      'Logout',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _handleBottomNavTap(int index) {
+    if (index == 4) {
+      // More button - handled by SharedBottomNavigationBar to open drawer
+      return;
+    }
+    if (index == 0) {
+      // Dashboard - already on this page
+      if (_selectedIndex != 0) {
+        setState(() => _selectedIndex = 0);
+      }
+      return;
+    }
+    if (index == 1) {
+      // Properties
+      Navigator.of(context).pushNamed('/owner-property-listing');
+      return;
+    }
+    if (index == 2) {
+      // Bookings/Reservations
+      Navigator.of(context).pushNamed('/owner-reservation');
+      return;
+    }
+    if (index == 3) {
+      // Profile
+      Navigator.of(context).pushNamed('/profile');
+      return;
+    }
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, bool isSelected) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? const Color(0xFF4188FF) : Colors.transparent,
-          width: 2,
-        ),
-      ),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: Colors.white,
-          size: 24,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-        onTap: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Navigating to $title', style: const TextStyle(color: Colors.black)),
-              backgroundColor: const Color(0xFF468FAF),
-              duration: const Duration(seconds: 1),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomNavItem(Icons.dashboard, 'Dashboard', 0),   // TODO: link the pages
-              _buildBottomNavItem(Icons.room_service, 'Properties', 1),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
-              _buildBottomNavItem(Icons.person, 'Profile', 3),
-              _buildBottomNavItem(Icons.more_horiz, 'More', 4),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          if (index == 4) {
-            _scaffoldKey.currentState?.openDrawer();
-          } else if (index == 3) {
-            // Profile page will fetch user data from API automatically
-            Navigator.of(context).pushNamed('/profile');
-          } else {
-            setState(() {
-              _selectedIndex = index;
-            });
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? const Color(0xFF4188FF) : const Color(0xFF94A3B8),
-                size: 24,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFF4188FF) : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    if (label == 'Dashboard') {
+      // Already on dashboard
+      return;
+    }
+    if (label == 'Profile') {
+      Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (label == 'PropertyListing' || label == 'Properties') {
+      Navigator.of(context).pushNamed('/owner-property-listing');
+      return;
+    }
+    if (label == 'Reservation' || label == 'Bookings') {
+      Navigator.of(context).pushNamed('/owner-reservation');
+      return;
+    }
+    if (label == 'Customer') {
+      Navigator.of(context).pushNamed('/owner-manage-customer');
+      return;
+    }
+    if (label == 'Moderator/Admin') {
+      Navigator.of(context).pushNamed('/owner-manage-moderatoradmin');
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
+        backgroundColor: const Color(0xFF468FAF),
+        duration: const Duration(seconds: 1),
       ),
     );
   }

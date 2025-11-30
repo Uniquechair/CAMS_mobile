@@ -31,11 +31,9 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
     case UserRole.admin:
       return const [
         DrawerMenuItem(Icons.dashboard, 'Dashboard'),
-        DrawerMenuItem(Icons.people, 'Customer'),
-        DrawerMenuItem(Icons.supervised_user_circle, 'Moderator'),
-        DrawerMenuItem(Icons.admin_panel_settings, 'Administrator'),
-        DrawerMenuItem(Icons.apartment, 'PropertyListing'),
-        DrawerMenuItem(Icons.calendar_today, 'Reservation'),
+        DrawerMenuItem(Icons.people, 'User Management'),
+        DrawerMenuItem(Icons.apartment, 'Properties'),
+        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
         DrawerMenuItem(Icons.history, 'AuditTrails'),
         DrawerMenuItem(Icons.trending_up, 'Finance'),
@@ -44,9 +42,9 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
     case UserRole.moderator:
       return const [
         DrawerMenuItem(Icons.dashboard, 'Dashboard'),
-        DrawerMenuItem(Icons.people, 'Customer'),
-        DrawerMenuItem(Icons.apartment, 'PropertyListing'),
-        DrawerMenuItem(Icons.calendar_today, 'Reservation'),
+        DrawerMenuItem(Icons.people, 'User Management'),
+        DrawerMenuItem(Icons.apartment, 'Properties'),
+        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
         DrawerMenuItem(Icons.history, 'AuditTrails'),
         DrawerMenuItem(Icons.trending_up, 'Finance'),
@@ -63,10 +61,14 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
     case UserRole.owner:
       return const [
         DrawerMenuItem(Icons.dashboard, 'Dashboard'),
-        DrawerMenuItem(Icons.apartment, 'PropertyListing'),
-        DrawerMenuItem(Icons.calendar_today, 'Reservation'),
+        DrawerMenuItem(Icons.people, 'Customer'),
+        DrawerMenuItem(Icons.people, 'Moderator/Admin'),
+        DrawerMenuItem(Icons.apartment, 'Properties'),
+        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
         DrawerMenuItem(Icons.trending_up, 'Finance'),
+        DrawerMenuItem(Icons.history, 'AuditTrails'),
+        DrawerMenuItem(Icons.layers, 'Cluster'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
   }

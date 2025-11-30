@@ -1,6 +1,7 @@
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import '../services/session.dart';
+import '../api.dart' as api;
 import '../app.dart';
 import 'manage_service.dart';
 import '../shared/navigation_menu.dart';
@@ -35,40 +36,10 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   String _searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
-  // Demo data (replace with API data)
-  final List<Map<String, dynamic>> _users = [
-    {
-      'uid': '1',
-      'username': 'admin123',
-      'name': 'Admin 123',
-      'email': 'admin23@gmail.com',
-      'status': 'Active',
-      'type': 'Admin',
-      'phone': '4345632145',
-      'country': 'Malaysia',
-    },
-    {
-      'uid': '3',
-      'username': 'moderator123',
-      'name': 'Moderator 123',
-      'email': 'moderator23@gmail.com',
-      'status': 'Active',
-      'type': 'Moderator',
-      'cluster': 'Kuching',
-      'phone': '132453467',
-      'country': 'Malaysia',
-    },
-    {
-      'uid': '4',
-      'username': 'customer123',
-      'name': 'Customer 123',
-      'email': 'customer23@gmail.com',
-      'status': 'Active',
-      'type': 'Customer',
-      'phone': '120101987',
-      'country': 'Malaysia',
-    },
-  ];
+  // Backend data (loaded from API)
+  List<Map<String, dynamic>> _users = [];
+  bool _isLoading = false;
+  String? _errorMessage;
 
   // ===== Role-aware theme =====
   static const Color kBg = Color(0xFFE7F0FF); // both roles
@@ -83,6 +54,38 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       widget.viewerRole == AppRole.admin ? UserRole.admin : UserRole.moderator;
 
   List<DrawerMenuItem> get _drawerItems => drawerMenuItemsForRole(_drawerRole);
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Logout', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await Session.clear();
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
+      }
+    }
+  }
 
   static Color _darken(Color c, [double amount = .1]) {
     final hsl = HSLColor.fromColor(c);
@@ -102,6 +105,150 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      print('UserManagement: Loading users for role ${widget.viewerRole}');
+
+      // Always fetch customers for current admin/moderator (backend filters "under this admin/moderator")
+      final customersData = await api.fetchCustomers();
+      final customers = _extractList(customersData, ['customers', 'data', 'users']);
+
+      final List<Map<String, dynamic>> loaded = [];
+
+      for (final raw in customers) {
+        if (raw is Map<String, dynamic>) {
+          loaded.add(_normalizeUser(raw, fallbackType: 'Customer'));
+        }
+      }
+
+      if (widget.viewerRole == AppRole.admin) {
+        // For admin viewer: also fetch moderators and administrators
+        final moderatorsData = await api.fetchModerators();
+        final moderators = _extractList(moderatorsData, ['moderators', 'data', 'users']);
+        for (final raw in moderators) {
+          if (raw is Map<String, dynamic>) {
+            loaded.add(_normalizeUser(raw, fallbackType: 'Moderator'));
+          }
+        }
+
+        final adminsData = await api.fetchAdministrators();
+        final admins = _extractList(adminsData, ['administrators', 'admins', 'data', 'users']);
+        for (final raw in admins) {
+          if (raw is Map<String, dynamic>) {
+            loaded.add(_normalizeUser(raw, fallbackType: 'Admin'));
+          }
+        }
+      }
+
+      setState(() {
+        _users = loaded;
+      });
+
+      print('UserManagement: Loaded ${_users.length} users');
+    } catch (e) {
+      print('UserManagement: Error loading users: $e');
+      setState(() {
+        _errorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// Extract a list from a flexible API response using common keys.
+  List<dynamic> _extractList(dynamic source, List<String> keys) {
+    if (source is List) return source;
+    if (source is Map<String, dynamic>) {
+      for (final key in keys) {
+        final value = source[key];
+        if (value is List) return value;
+      }
+    }
+    return const [];
+  }
+
+  /// Normalize backend user object into the shape expected by the UI.
+  Map<String, dynamic> _normalizeUser(
+    Map<String, dynamic> raw, {
+    required String fallbackType,
+  }) {
+    // Try to determine role from common fields
+    final dynamic groupRaw = raw['usergroup'] ?? raw['role'] ?? raw['type'];
+    String type = fallbackType;
+    if (groupRaw is String && groupRaw.trim().isNotEmpty) {
+      final g = groupRaw.trim().toLowerCase();
+      if (g.contains('admin')) {
+        type = 'Admin';
+      } else if (g.contains('moderator')) {
+        type = 'Moderator';
+      } else if (g.contains('customer')) {
+        type = 'Customer';
+      } else if (g.contains('owner')) {
+        type = 'Owner';
+      }
+    }
+
+    final uid = (raw['userid'] ?? raw['uid'] ?? raw['id'] ?? '').toString();
+    final username = (raw['username'] ?? '').toString();
+
+    // Name from firstname/lastname or "name" field
+    final firstName = (raw['firstname'] ?? raw['firstName'] ?? raw['ufirstname'] ?? '').toString();
+    final lastName = (raw['lastname'] ?? raw['lastName'] ?? raw['ulastname'] ?? '').toString();
+    String name;
+    if (firstName.isNotEmpty || lastName.isNotEmpty) {
+      name = [firstName, lastName].where((p) => p.isNotEmpty).join(' ');
+    } else {
+      name = (raw['name'] ?? username).toString();
+    }
+
+    final email = (raw['email'] ?? raw['uemail'] ?? '').toString();
+    // Check multiple field name variations for phone (backend uses 'uphoneno')
+    final phone = (raw['uphoneno'] ?? raw['phone'] ?? raw['phoneNo'] ?? raw['phoneno'] ?? raw['uphone'] ?? '').toString();
+    // If phone is empty or "N/A", set to empty string
+    final phoneValue = phone.isEmpty || phone.toLowerCase() == 'n/a' 
+        ? '' 
+        : phone;
+    final country = (raw['country'] ?? raw['countryname'] ?? raw['ucountry'] ?? '').toString();
+    final cluster = (raw['cluster'] ?? raw['clustername'] ?? raw['clusterName'])?.toString();
+
+    // Status from active/status flags (including uactivation from backend)
+    String status = 'Active';
+    final activeField = raw['status'] ?? raw['userStatus'] ?? raw['isActive'] ?? raw['uactivation'];
+    if (activeField is bool) {
+      status = activeField ? 'Active' : 'Inactive';
+    } else if (activeField is String) {
+      status = activeField.toLowerCase().contains('inactive') ? 'Inactive' : 'Active';
+    }
+
+    return {
+      'uid': uid,
+      'username': username,
+      'name': name,
+      'email': email,
+      'status': status,
+      'type': type,
+      'phone': phoneValue,
+      'country': country,
+      if (raw['password'] != null) 'password': raw['password'].toString(),
+      if (cluster != null && cluster.isNotEmpty) 'cluster': cluster,
+    };
   }
 
   // ===== SMART SEARCH (role-aware) =====
@@ -181,22 +328,24 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   // ===== App Bar =====
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       backgroundColor: kPrimary,
       elevation: 0,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
-      ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () {
-          Navigator.of(context).pop();
-        },
       ),
       title: const Text(
         'User Management',
         style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: .3, color: Colors.white),
       ),
       centerTitle: false,
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          icon: const Icon(Icons.refresh),
+          onPressed: _isLoading ? null : _loadUsers,
+        ),
+      ],
     );
   }
 
@@ -326,6 +475,46 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
 
   // ===== List (glass cards) =====
   Widget _buildUserListGlass() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: _glass(
+          radius: 20,
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
+              const SizedBox(height: 10),
+              const Text('Failed to load users', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: kMuted, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: _loadUsers,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final data = _visibleUsers;
     if (data.isEmpty) {
       return Center(
@@ -346,61 +535,69 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       );
     }
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      itemCount: data.length,
-      itemBuilder: (_, i) {
-        final user = data[i];
-        return _glass(
-          radius: 18,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _avatarForType(user['type']),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          user['username'],
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                        ),
-                        _statusPill(user['status']),
+    return RefreshIndicator(
+      onRefresh: _loadUsers,
+      color: kPrimary,
+      backgroundColor: Colors.white,
+      strokeWidth: 3.0,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        itemCount: data.length,
+        itemBuilder: (_, i) {
+          final user = data[i];
+          return _glass(
+            radius: 18,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _avatarForType(user['type']),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            user['username'],
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          ),
+                          _statusPill(user['status']),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        user['name'],
+                        style: const TextStyle(color: kMuted),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        user['email'],
+                        style: const TextStyle(color: kMuted),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
+                        const SizedBox(height: 6),
+                        _tag('Cluster: ${user['cluster']}'),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user['name'],
-                      style: const TextStyle(color: kMuted),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      user['email'],
-                      style: const TextStyle(color: kMuted),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
-                      const SizedBox(height: 6),
-                      _tag('Cluster: ${user['cluster']}'),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _refinedMenu(user),
-            ],
-          ),
-        );
-      },
+                const SizedBox(width: 8),
+                _refinedMenu(user),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -506,7 +703,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       color: Colors.white,
       elevation: 8,
-      onSelected: (v) {
+      onSelected: (v) async {
         switch (v) {
           case 'view':
             _showUserDetails(user);
@@ -545,16 +742,20 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
           return items;
         }
 
-        // Common to Moderator/Customer targets (when viewer is Admin)
-        items.add(_menuItem('edit', Icons.edit_rounded, 'Edit'));
-
-        if (isActive) {
-          items.add(_menuItem('suspend', Icons.block_rounded, 'Suspend'));
-        } else {
-          items.add(_menuItem('activate', Icons.check_circle_rounded, 'Activate'));
-          if (type == 'Moderator') {
-            // Only moderators can be removed when inactive
-            items.add(_menuItem('remove', Icons.delete_forever_rounded, 'Remove'));
+        if (type == 'Customer') {
+          // Admin can suspend/activate customers
+          if (isActive) {
+            items.add(_menuItem('suspend', Icons.block_rounded, 'Suspend'));
+          } else {
+            items.add(_menuItem('activate', Icons.check_circle_rounded, 'Activate'));
+          }
+        } else if (type == 'Moderator') {
+          // Admin can view, edit, and suspend/activate moderators
+          items.add(_menuItem('edit', Icons.edit_rounded, 'Edit'));
+          if (isActive) {
+            items.add(_menuItem('suspend', Icons.block_rounded, 'Suspend'));
+          } else {
+            items.add(_menuItem('activate', Icons.check_circle_rounded, 'Activate'));
           }
         }
         return items;
@@ -713,8 +914,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                                 _infoTile(Icons.tag, 'UID', (user['uid'] as String?) ?? '—'),
                                 _infoTile(Icons.person_outline, 'Username', (user['username'] as String?) ?? '—'),
                                 _infoTile(Icons.email_outlined, 'Email', (user['email'] as String?) ?? '—'),
-                                _infoTile(Icons.phone_outlined, 'Phone', (user['phone'] as String?) ?? '—'),
-                                _infoTile(Icons.public, 'Country', (user['country'] as String?) ?? '—'),
+                                _infoTile(Icons.phone_outlined, 'Phone', 
+                                  (user['phone'] != null && (user['phone'] as String).isNotEmpty)
+                                    ? (user['phone'] as String)
+                                    : '—'),
+                                _infoTile(Icons.public, 'Country', 
+                                  (user['country'] != null && (user['country'] as String).isNotEmpty)
+                                    ? (user['country'] as String)
+                                    : '—'),
                                 if (user['cluster'] != null)
                                   _infoTile(Icons.account_tree_outlined, 'Cluster', user['cluster'] as String),
                                 _infoTile(
@@ -959,8 +1166,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     );
     final usernameController = TextEditingController(text: user['username']);
     final emailController = TextEditingController(text: user['email']);
-    final passwordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
+    // Show encrypted password as read-only if present in data
+    final passwordController = TextEditingController(text: (user['password'] ?? '') as String? ?? '');
     final phoneController = TextEditingController(text: user['phone'] ?? '');
     final countryController = TextEditingController(text: user['country'] ?? '');
 
@@ -1000,19 +1207,16 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _input('Username *', Icons.person, usernameController, readOnly: true)),
+                      Expanded(child: _input('Username ', Icons.person, usernameController, readOnly: true)),
                       const SizedBox(width: 12),
                       Expanded(child: _input('Email *', Icons.email_outlined, emailController, readOnly: true)),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: _input('Password', Icons.lock_outline, passwordController, obscure: true)),
-                      const SizedBox(width: 12),
-                      Expanded(child: _input('Confirm Password', Icons.lock_outline, confirmPasswordController, obscure: true)),
-                    ],
-                  ),
+                  // Password (encrypted, read-only)
+                  const SizedBox(height: 12),
+                  _input('Password ', Icons.lock_outline, passwordController,
+                      obscure: false, readOnly: true),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1044,14 +1248,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                           );
                           return;
                         }
-                        if (passwordController.text.isNotEmpty &&
-                            passwordController.text != confirmPasswordController.text) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Passwords do not match')),
-                          );
-                          return;
-                        }
-
                         setState(() {
                           user['name'] = '${firstNameController.text} ${lastNameController.text}';
                           user['username'] = usernameController.text;
@@ -1110,12 +1306,31 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         message: 'Suspend ${user['username']}?',
         confirmLabel: 'Suspend',
         confirmColor: kPrimaryDeep,
-        onConfirm: () {
-          setState(() => user['status'] = 'Inactive');
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('User ${user['username']} has been suspended.')),
-          );
+        onConfirm: () async {
+          // Call backend to suspend by userid, then reload list
+          final uidStr = (user['uid'] ?? '').toString();
+          final userid = int.tryParse(uidStr);
+          if (userid == null) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Invalid user ID – cannot suspend.')),
+            );
+            return;
+          }
+
+          try {
+            await api.suspendUser(userid);
+            await _loadUsers();
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('User ${user['username']} has been suspended.')),
+            );
+          } catch (e) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to suspend user: $e')),
+            );
+          }
         },
       ),
     );
@@ -1129,12 +1344,30 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         message: 'Activate ${user['username']}?',
         confirmLabel: 'Activate',
         confirmColor: kPrimaryDeep,
-        onConfirm: () {
-          setState(() => user['status'] = 'Active');
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('User ${user['username']} has been activated.')),
-          );
+        onConfirm: () async {
+          final uidStr = (user['uid'] ?? '').toString();
+          final userid = int.tryParse(uidStr);
+          if (userid == null) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Invalid user ID – cannot activate.')),
+            );
+            return;
+          }
+
+          try {
+            await api.activateUser(userid);
+            await _loadUsers();
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('User ${user['username']} has been activated.')),
+            );
+          } catch (e) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to activate user: $e')),
+            );
+          }
         },
       ),
     );
@@ -1220,6 +1453,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return MoreMenuDrawer(
       role: _drawerRole,
       onItemSelected: _handleMenuSelection,
+      onLogout: _handleLogout,
+      currentPageLabel: 'User Management',
     );
   }
 

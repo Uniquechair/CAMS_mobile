@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/session.dart';
 import '../app.dart';
+import '../api.dart' as api;
 import 'manage_service.dart';
 import '../shared/navigation_menu.dart';
 import '../shared/bottom_navigation_bar.dart';
@@ -21,46 +22,233 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   DateTime _selectedDate = DateTime.now();
   String _searchQuery = '';
   String? _currentUserRole;
-  
-    // Hardcoded booking data
-    final List<Map<String, dynamic>> _bookings = [
-      {
-        'property': 'Sunrise Villa',
-        'customer': 'Alice',
-        'start': DateTime(2025, 11, 5),
-        'end': DateTime(2025, 11, 8),
-        'price': 'RM 3.3',
-        'status': 'Accepted',
-      },
-      {
-        'property': 'Blue Lagoon',
-        'customer': 'Bob',
-        'start': DateTime(2025, 11, 5),
-        'end': DateTime(2025, 11, 6),
-        'price': 'RM 2.0',
-        'status': 'Pending',
-      },
-      {
-        'property': 'Green Cottage',
-        'customer': 'Charlie',
-        'start': DateTime(2025, 11, 7),
-        'end': DateTime(2025, 11, 9),
-        'price': 'RM 4.5',
-        'status': 'Rejected',
-      },
-    ];
+  bool _isActionInProgress = false;
+  int? _currentUserId;
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _bookings = [];
 
   @override
   void initState() {
     super.initState();
-    _loadUserRole();
+    _initializePage();
+  }
+
+  Future<void> _initializePage() async {
+    await _loadUserRole();
+    await _loadBookings();
   }
 
   Future<void> _loadUserRole() async {
     final userRole = await Session.getUserGroup();
+    final userid = await Session.getUserId();
     setState(() {
       _currentUserRole = userRole;
+      _currentUserId = userid;
     });
+  }
+
+  DateTime? _getAdjustedSelectedDate(List<Map<String, dynamic>> bookings) {
+    if (bookings.isEmpty) return null;
+
+    final hasMatch = bookings.any((booking) {
+      final start = booking['start'] as DateTime;
+      final end = booking['end'] as DateTime;
+      return _isDateWithinRange(_selectedDate, start, end);
+    });
+
+    if (hasMatch) return null;
+
+    DateTime? bestFutureDate;
+    DateTime? earliestDate;
+    final now = DateTime.now();
+
+    for (final booking in bookings) {
+      final start = booking['start'] as DateTime;
+
+      if (earliestDate == null || start.isBefore(earliestDate)) {
+        earliestDate = start;
+      }
+
+      if (!start.isBefore(now)) {
+        if (bestFutureDate == null || start.isBefore(bestFutureDate)) {
+          bestFutureDate = start;
+        }
+      }
+    }
+
+    return bestFutureDate ?? earliestDate;
+  }
+
+  bool _isDateWithinRange(DateTime target, DateTime start, DateTime end) {
+    final isAfterOrSameAsStart = !target.isBefore(start);
+    final isBeforeOrSameAsEnd = !target.isAfter(end);
+    return isAfterOrSameAsStart && isBeforeOrSameAsEnd;
+  }
+
+  Future<void> _loadBookings() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      print('ManageBooking: Loading bookings for role: $_currentUserRole, userid: $_currentUserId');
+      
+      if (_currentUserId == null) {
+        print('ManageBooking: User ID is null, cannot fetch bookings');
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      // Fetch reservations from API based on hierarchy
+      // Backend should filter:
+      // - Moderator: only customers under that moderator
+      // - Admin: customers under admin + customers under moderators under that admin
+      final reservationsData = await api.fetchReservationsForAdminModerator();
+      
+      print('ManageBooking: Received ${reservationsData.length} reservations from backend');
+      
+      List<Map<String, dynamic>> loadedBookings = [];
+      
+      for (var reservation in reservationsData) {
+        try {
+          // Parse dates
+          DateTime? startDate;
+          DateTime? endDate;
+          
+          if (reservation['checkindatetime'] != null) {
+            startDate = DateTime.parse(reservation['checkindatetime'].toString());
+          }
+          if (reservation['checkoutdatetime'] != null) {
+            endDate = DateTime.parse(reservation['checkoutdatetime'].toString());
+          }
+          
+          if (startDate == null || endDate == null) {
+            print('ManageBooking: Skipping reservation with missing dates');
+            continue;
+          }
+          
+          // Get property name
+          String propertyName = reservation['propertyname'] ?? 
+                               reservation['propertyName'] ?? 
+                               reservation['propertyaddress'] ?? 
+                               reservation['propertyAddress'] ??
+                               reservation['propertydescription'] ??
+                               reservation['propertyDescription'] ??
+                               'Unknown Property';
+          
+          // Get customer name
+          String customerName = reservation['rcfirstname'] ?? 
+                               reservation['rcFirstName'] ??
+                               reservation['customer'] ??
+                               reservation['customername'] ??
+                               'Unknown Customer';
+          
+          if (reservation['rclastname'] != null) {
+            customerName += ' ${reservation['rclastname']}';
+          }
+          
+          // Get price
+          double price = 0.0;
+          if (reservation['totalprice'] != null) {
+            if (reservation['totalprice'] is double) {
+              price = reservation['totalprice'];
+            } else if (reservation['totalprice'] is int) {
+              price = (reservation['totalprice'] as int).toDouble();
+            } else if (reservation['totalprice'] is String) {
+              price = double.tryParse(reservation['totalprice']) ?? 0.0;
+            }
+          }
+          
+          // Get status - for admin/moderator, show "Enquiry" as "Pending"
+          String rawStatus = reservation['reservationstatus'] ?? 
+                            reservation['reservationStatus'] ??
+                            reservation['status'] ??
+                            'Pending';
+          // Convert "Enquiry" to "Pending" for admin/moderator view
+          String status = (rawStatus.toString().toLowerCase() == 'enquiry') 
+                         ? 'Pending' 
+                         : rawStatus;
+          
+          final rawReservationId = reservation['reservationid'] ?? reservation['reservationId'];
+          final int? reservationId = rawReservationId is int
+              ? rawReservationId
+              : int.tryParse(rawReservationId?.toString() ?? '');
+          if (reservationId == null) {
+            print('ManageBooking: Skipping reservation with invalid ID');
+            continue;
+          }
+
+          loadedBookings.add({
+            'property': propertyName,
+            'customer': customerName,
+            'start': startDate,
+            'end': endDate,
+            'price': 'RM ${price.toStringAsFixed(2)}',
+            'status': status,
+            'reservationid': reservationId,
+          });
+        } catch (e) {
+          print('ManageBooking: Error parsing reservation: $e');
+          continue;
+        }
+      }
+      
+      final adjustedSelectedDate = _getAdjustedSelectedDate(loadedBookings);
+      if (mounted) {
+        setState(() {
+          _bookings = loadedBookings;
+          if (adjustedSelectedDate != null) {
+            _selectedDate = adjustedSelectedDate;
+            print('ManageBooking: Adjusted selected date to $_selectedDate to match available bookings');
+          }
+          _isLoading = false;
+        });
+      }
+      
+      print('ManageBooking: Loaded ${_bookings.length} bookings');
+
+    } catch (error) {
+      print('ManageBooking: Error loading bookings: $error');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Logout', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await Session.clear();
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
+      }
+    }
   }
 
   @override
@@ -70,22 +258,33 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
       backgroundColor: const Color(0xFFE7F0FF),
       endDrawer: _buildDrawer(),
       appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _buildSearchBar(),
-              const SizedBox(height: 12),
-              _buildStatusFilter(),
-              const SizedBox(height: 16),
-              _buildViewToggle(),
-              const SizedBox(height: 16),
-              _isCalendarView ? _buildCalendarView() : _buildTableView(),
-            ],
-          ),
-        ),
-      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF0077B6),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadBookings,
+              color: const Color(0xFF0077B6),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildSearchBar(),
+                      const SizedBox(height: 12),
+                      _buildStatusFilter(),
+                      const SizedBox(height: 16),
+                      _buildViewToggle(),
+                      const SizedBox(height: 16),
+                      _isCalendarView ? _buildCalendarView() : _buildTableView(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
       bottomNavigationBar: _drawerRole != null ? SharedBottomNavigationBar(
         selectedIndex: _selectedIndex,
         onTap: _handleBottomNavTap,
@@ -102,18 +301,11 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     final gradientColors = isAdmin 
         ? const [Color(0xFF6366F1), Color(0xFF649EFF)]
         : const [Color(0xFF6366F1), Color(0xFF78AAFF)];
-    final dashboardTitle = isAdmin ? 'Admin Dashboard' : 'Moderator Dashboard';
     
     return AppBar(
       automaticallyImplyLeading: false,
       backgroundColor: Colors.white,
       elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.menu, color: Color(0xFF64748B)),
-        onPressed: () {
-          _scaffoldKey.currentState?.openDrawer();
-        },
-      ),
       title: Row(
         children: [
           Container(
@@ -125,73 +317,16 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
             child: const Icon(Icons.calendar_today, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Manage Bookings',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  dashboardTitle,
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
+          const Text(
+            'Manage Bookings',
+            style: TextStyle(
+              color: Color(0xFF1E293B),
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
-          onPressed: () {},
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-          onPressed: () async {
-            // Show confirmation dialog
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                backgroundColor: const Color(0xFFE7F0FF),
-                title: const Text('Logout', style: TextStyle(color: Colors.black)),
-                content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0077B6),
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Logout'),
-                  ),
-                ],
-              ),
-            );
-
-            if (confirmed == true) {
-              await Session.clear();
-              if (mounted) {
-                Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-              }
-            }
-          },
-        ),
-      ],
     );
   }
 
@@ -527,20 +662,11 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   }
 
   Widget _buildTableView() {
-    // Filter bookings for selected date, status and search query
+    // Filter bookings by status and search query only (table view should list all bookings)
     final filteredBookings = _bookings.where((booking) {
-      // First filter by date
-      final start = booking['start'] as DateTime;
-      final end = booking['end'] as DateTime;
-      final isDateMatch = _selectedDate.isAtSameMomentAs(start) ||
-          (_selectedDate.isAfter(start) && _selectedDate.isBefore(end)) ||
-          _selectedDate.isAtSameMomentAs(end);
-      
-      // Then filter by status
-      final isStatusMatch = _selectedStatus == 'All Statuses' || 
+      final isStatusMatch = _selectedStatus == 'All Statuses' ||
           booking['status'] == _selectedStatus;
 
-      // Then filter by search query
       final property = (booking['property'] as String).toLowerCase();
       final customer = (booking['customer'] as String).toLowerCase();
       final searchTerm = _searchQuery.toLowerCase();
@@ -548,9 +674,9 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
           property.contains(searchTerm) ||
           customer.contains(searchTerm);
 
-      // All conditions must match
-      return isDateMatch && isStatusMatch && isSearchMatch;
-    }).toList();
+      return isStatusMatch && isSearchMatch;
+    }).toList()
+      ..sort((a, b) => (b['start'] as DateTime).compareTo(a['start'] as DateTime));
 
     return Container(
       decoration: BoxDecoration(
@@ -627,9 +753,29 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
                     ],
                   ),
                 ),
-                IconButton(
+                PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
-                  onPressed: () {},
+                  onSelected: (value) => _handleReservationAction(value, booking),
+                  itemBuilder: (context) {
+                    final currentStatus = (booking['status'] as String?)?.toLowerCase() ?? '';
+                    final canTakeAction = currentStatus == 'pending';
+                    return [
+                      PopupMenuItem(
+                        value: 'view',
+                        child: _buildMenuItem(Icons.remove_red_eye_outlined, 'View Details'),
+                      ),
+                      if (canTakeAction)
+                        PopupMenuItem(
+                          value: 'accept',
+                          child: _buildMenuItem(Icons.check, 'Accept'),
+                        ),
+                      if (canTakeAction)
+                        PopupMenuItem(
+                          value: 'reject',
+                          child: _buildMenuItem(Icons.close, 'Reject'),
+                        ),
+                    ];
+                  },
                 ),
               ],
             ),
@@ -645,33 +791,217 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
                     color: Color(0xFF649EFF),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: booking['status'] == 'Accepted'
+                Builder(
+                  builder: (_) {
+                    final status = booking['status'] as String;
+                    final isPositive = status == 'Accepted' || status == 'Paid';
+                    final isPending = status == 'Pending';
+
+                    final badgeBgColor = isPositive
                         ? const Color(0xFFD1FAE5)
-                        : booking['status'] == 'Pending'
+                        : isPending
                             ? const Color(0xFFFFF9C4)
-                            : const Color(0xFFFFCDD2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    booking['status'],
-                    style: TextStyle(
-                      color: booking['status'] == 'Accepted'
-                          ? const Color(0xFF065F46)
-                          : booking['status'] == 'Pending'
-                              ? const Color(0xFFFBBF24)
-                              : const Color(0xFFEF4444),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                            : const Color(0xFFFFCDD2);
+
+                    final badgeTextColor = isPositive
+                        ? const Color(0xFF15803D)
+                        : isPending
+                            ? const Color(0xFFFBBF24)
+                            : const Color(0xFFEF4444);
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: badgeBgColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          color: badgeTextColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF1E293B)),
+        const SizedBox(width: 10),
+        Text(label),
+      ],
+    );
+  }
+
+  void _handleReservationAction(String action, Map<String, dynamic> booking) {
+    switch (action) {
+      case 'view':
+        _showReservationDetails(booking);
+        break;
+      case 'accept':
+        _acceptReservation(booking);
+        break;
+      case 'reject':
+        _rejectReservation(booking);
+        break;
+    }
+  }
+
+  void _showReservationDetails(Map<String, dynamic> booking) {
+    final dateFormat = DateFormat('dd-MM-yyyy');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reservation Details'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Reservation ID', booking['reservationid'].toString()),
+            _buildDetailRow('Property', booking['property']),
+            _buildDetailRow('Customer', booking['customer']),
+            _buildDetailRow('Check-in', dateFormat.format(booking['start'] as DateTime)),
+            _buildDetailRow('Check-out', dateFormat.format(booking['end'] as DateTime)),
+            _buildDetailRow('Status', booking['status']),
+            _buildDetailRow('Total Price', booking['price']),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Color(0xFF475569)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptReservation(Map<String, dynamic> booking) async {
+    if (_isActionInProgress) return;
+    final reservationId = booking['reservationid'];
+    if (reservationId == null) return;
+
+    final confirmed = await _showConfirmationDialog(
+      title: 'Accept Reservation',
+      message: 'Accept reservation for ${booking['property']}?',
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      await api.updateReservationStatus(reservationId, 'Accepted');
+      try {
+        await api.acceptBooking(reservationId);
+      } catch (notifyError) {
+        print('ManageBooking: acceptBooking notification failed: $notifyError');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reservation accepted successfully')),
+        );
+      }
+      await _loadBookings();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept reservation: $error')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isActionInProgress = false);
+      }
+    }
+  }
+
+  Future<void> _rejectReservation(Map<String, dynamic> booking) async {
+    if (_isActionInProgress) return;
+    final reservationId = booking['reservationid'];
+    if (reservationId == null) return;
+
+    final confirmed = await _showConfirmationDialog(
+      title: 'Reject Reservation',
+      message: 'Reject reservation for ${booking['property']}?',
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      await api.updateReservationStatus(reservationId, 'Rejected');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reservation rejected successfully')),
+        );
+      }
+      await _loadBookings();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reject reservation: $error')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isActionInProgress = false);
+      }
+    }
+  }
+
+  Future<bool?> _showConfirmationDialog({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
       ),
     );
   }
@@ -726,6 +1056,8 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     return MoreMenuDrawer(
       role: _drawerRole!,
       onItemSelected: _handleMenuSelection,
+      onLogout: _handleLogout,
+      currentPageLabel: 'Bookings',
     );
   }
 
@@ -742,6 +1074,12 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     }
     if (label == 'Profile') {
       Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (label == 'User Management') {
+      // Navigate to user management page
+      final role = _currentUserRole == 'admin' ? AppRole.admin : AppRole.moderator;
+      Navigator.of(context).pushNamed('/user-management', arguments: role);
       return;
     }
     if (label == 'PropertyListing' || label == 'Properties') {

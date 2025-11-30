@@ -135,11 +135,15 @@ class BottomNavItem {
 class MoreMenuDrawer extends StatelessWidget {
   final UserRole role;
   final Function(String) onItemSelected;
+  final Future<void> Function()? onLogout;
+  final String? currentPageLabel;
 
   const MoreMenuDrawer({
     super.key,
     required this.role,
     required this.onItemSelected,
+    this.onLogout,
+    this.currentPageLabel,
   });
 
   String get _headerTitle {
@@ -219,10 +223,33 @@ class MoreMenuDrawer extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 children: [
                   for (var i = 0; i < items.length; i++)
-                    _buildDrawerItem(items[i], isSelected: i == 0),
+                    _buildDrawerItem(items[i], isSelected: currentPageLabel != null && items[i].label == currentPageLabel),
                 ],
               ),
             ),
+            if (onLogout != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    Navigator.of(context).pop(); // close drawer first
+                    await onLogout?.call();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0077B6),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.logout),
+                  label: const Text(
+                    'Logout',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
