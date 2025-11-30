@@ -8,6 +8,9 @@ import 'shared/bottom_navigation_bar.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
+import 'owner/owner_reservation.dart';
+import 'owner/owner_property_listing.dart';
+import 'shared_admin_moderator/user_management.dart';
 
 class ProfilePage extends StatefulWidget {
   final String userName;
@@ -16,7 +19,7 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     this.userName = 'User',
-    this.userEmail = 'user@example.com',
+    this.userEmail = '',
   });
 
   @override
@@ -35,8 +38,17 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _routeUserRole;
   int _selectedIndex = 3;
 
-  // PayPal controller
+  // Store full user data for updates
+  Map<String, dynamic>? _fullUserData;
+
+  String? _storedPassword;
+
+  // PayPal & password controllers
   final TextEditingController _paypalController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  bool _showNewPassword = false;
+  bool _showConfirmPassword = false;
 
   final Color _primaryBlue = const Color(0xFF0077B6);
   final Color _pageBg = const Color(0xFFE7F0FF);
@@ -62,7 +74,40 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     _paypalController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Map<String, dynamic> _buildBaseUpdatePayload(int userid) {
+    final payload = {
+      'userid': userid,
+      'username': _fullUserData!['username'] ?? _userName ?? '',
+      'ufirstname': _fullUserData!['ufirstname'] ?? _fullUserData!['firstname'] ?? '',
+      'ulastname': _fullUserData!['ulastname'] ?? _fullUserData!['lastname'] ?? '',
+      'udob': _fullUserData!['udob'] ?? _fullUserData!['dob'] ?? null,
+      'utitle': _fullUserData!['utitle'] ?? _fullUserData!['title'] ?? null,
+      'ugender': _fullUserData!['ugender'] ?? _fullUserData!['gender'] ?? null,
+      'uemail': _fullUserData!['uemail'] ?? _userEmail ?? '',
+      'uphoneno': _fullUserData!['uphoneno'] ?? _userPhone ?? '',
+      'ucountry': _fullUserData!['ucountry'] ?? _userAddress ?? '',
+      'uzipcode': _fullUserData!['uzipcode'] ?? _fullUserData!['zipcode'] ?? null,
+    };
+
+    payload.removeWhere((key, value) {
+      if (value == null) return true;
+      if (value is String) {
+        return value.trim().isEmpty;
+      }
+      return false;
+    });
+
+    final passwordValue = (_storedPassword ?? '').trim();
+    if (passwordValue.isNotEmpty) {
+      payload['password'] = passwordValue;
+    }
+
+    return payload;
   }
 
   Future<void> _loadUserData() async {
@@ -80,6 +125,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
       // Fetch user data from API
       final userData = await api.fetchUserData(userid);
+      
+      // Store full user data for updates
+      _fullUserData = userData;
 
       // Get user role from session
       final userGroup = await Session.getUserGroup();
@@ -91,11 +139,12 @@ class _ProfilePageState extends State<ProfilePage> {
           _userPhone = userData['uphoneno']?.toString();
           _userAddress = userData['ucountry'];
           _userRole = userGroup;
+          _storedPassword = userData['password']?.toString();
           _isLoading = false;
 
-          // Prefill PayPal email if backend sends it
+          // Prefill PayPal ID if backend sends it (check both paypalid and paypal_email)
           _paypalController.text =
-              (userData['paypal_email'] ?? '').toString();
+              (userData['paypalid'] ?? userData['paypal_email'] ?? '').toString();
         });
       }
     } catch (error) {
@@ -142,18 +191,18 @@ class _ProfilePageState extends State<ProfilePage> {
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
-          '/login',
+          '/before-login',
           (route) => false,
         );
       }
     }
   }
 
-  // Dummy handler – plug in your backend API here
   Future<void> _updatePaypal() async {
     final paypalEmail = _paypalController.text.trim();
 
     if (paypalEmail.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter your PayPal email.'),
@@ -163,14 +212,215 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    // TODO: call your backend API to save PayPal email
+    // Validate email format
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(paypalEmail)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('PayPal information updated.'),
-        backgroundColor: Color(0xFF4CAF50),
-      ),
-    );
+    try {
+      // Get user ID from session
+      final userid = await Session.getUserId();
+      if (userid == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User not logged in.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Call API to update PayPal ID
+      // Backend requires ALL fields, so we need to include current user data
+      if (_fullUserData == null) {
+        // Reload user data if not available
+        await _loadUserData();
+        if (_fullUserData == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load user data. Please try again.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          return;
+        }
+      }
+      
+      // Build update data - PayPal email update only (like website payment tab)
+      // Only send userid and paypalid - no password or other fields needed
+      final updateData = {
+        'userid': userid,
+        'paypalid': paypalEmail, // Backend expects 'paypalid' not 'paypal_email'
+      };
+      
+      print('ProfilePage: Updating PayPal ID for userid: $userid');
+      print('ProfilePage: PayPal ID: $paypalEmail');
+      print('ProfilePage: Update data keys: ${updateData.keys.toList()}');
+      
+      await api.updateProfile(updateData);
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PayPal information updated successfully.'),
+          backgroundColor: Color(0xFF4CAF50),
+        ),
+      );
+
+      // Reload user data to reflect changes
+      _loadUserData();
+    } catch (error) {
+      print('Error updating PayPal email: $error');
+      
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Show error message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update PayPal email: ${error.toString()}'),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _updatePassword() async {
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (newPassword.isEmpty || confirmPassword.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter and confirm your new password.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 8 characters long.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Passwords do not match. Please try again.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final userid = await Session.getUserId();
+      if (userid == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User not logged in.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      if (_fullUserData == null) {
+        await _loadUserData();
+        if (_fullUserData == null) {
+          if (!mounted) return;
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load user data. Please try again.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          return;
+        }
+      }
+
+      final updateData = _buildBaseUpdatePayload(userid)
+        ..['password'] = newPassword;
+
+      print('ProfilePage: Updating password for userid: $userid');
+      await api.updateProfile(updateData);
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password updated successfully.'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+      }
+
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      _storedPassword = newPassword;
+    } catch (error) {
+      print('Error updating password: $error');
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update password: $error'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
   }
 
   Color _getHeaderColor(String role) {
@@ -218,31 +468,22 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _pageBg,
+      drawerEnableOpenDragGesture: false,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: const SizedBox(width: 0, height: 0),
+        leadingWidth: 0,
+        toolbarHeight: kToolbarHeight,
         title: const Text("My Profile"),
         centerTitle: true,
         elevation: 0,
         backgroundColor: headerColor,
-        actions: [
-          if (_isLoading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
       endDrawer: navRole != null && navRole != nav.UserRole.customer ? MoreMenuDrawer(
         role: navRole,
         onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
+        currentPageLabel: 'Profile',
       ) : null,
       body: SafeArea(
         top: false,
@@ -563,6 +804,110 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
 
+                  const SizedBox(height: 18),
+
+                  // === Password update card ===
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 20,
+                      horizontal: 18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: _cardRadius,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Change Password",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _newPasswordController,
+                          obscureText: !_showNewPassword,
+                          decoration: InputDecoration(
+                            labelText: 'New Password',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _showNewPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showNewPassword = !_showNewPassword;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _confirmPasswordController,
+                          obscureText: !_showConfirmPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Confirm Password',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _showConfirmPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showConfirmPassword = !_showConfirmPassword;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _updatePassword,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _primaryBlue,
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              "Update Password",
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
 
                   // Logout button (full width)
@@ -639,12 +984,11 @@ class _ProfilePageState extends State<ProfilePage> {
     if (index == 1) {
       // Properties/Cart
       if (role == nav.UserRole.customer) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CustomerCart()),
-        );
+        Navigator.of(context).pushReplacementNamed('/customer-cart');
+      } else if (role == nav.UserRole.owner) {
+        Navigator.of(context).pushReplacementNamed('/owner-property-listing');
       } else {
-        Navigator.of(context).pushNamed('/manage-services');
+        Navigator.of(context).pushReplacementNamed('/manage-services');
       }
       return;
     }
@@ -652,12 +996,11 @@ class _ProfilePageState extends State<ProfilePage> {
     if (index == 2) {
       // Bookings
       if (role == nav.UserRole.customer) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CustomerBookings()),
-        );
+        Navigator.of(context).pushReplacementNamed('/customer-bookings');
+      } else if (role == nav.UserRole.owner) {
+        Navigator.of(context).pushReplacementNamed('/owner-reservation');
       } else {
-        Navigator.of(context).pushNamed('/manage-booking');
+        Navigator.of(context).pushReplacementNamed('/manage-booking');
       }
       return;
     }
@@ -671,6 +1014,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _handleMenuSelection(String label) {
+    Navigator.pop(context); // Close drawer first
     final role = _userRoleEnum;
     if (role == null) return;
 
@@ -703,27 +1047,46 @@ class _ProfilePageState extends State<ProfilePage> {
         // Already on profile page
         break;
       case 'Properties':
-      case 'PropertyListing':
-        Navigator.of(context).pushNamed('/manage-services');
+    
+        if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-property-listing');
+        } else {
+          Navigator.of(context).pushReplacementNamed('/manage-services');
+        }
         break;
-      case 'Reservation':
+      
       case 'Bookings':
-        Navigator.of(context).pushNamed('/manage-booking');
+        if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-reservation');
+        } else {
+          Navigator.of(context).pushReplacementNamed('/manage-booking');
+        }
         break;
       case 'Rooms':
-        Navigator.of(context).pushNamed('/home');
+        Navigator.of(context).pushReplacementNamed('/home');
         break;
       case 'Cart':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CustomerCart()),
-        );
+        Navigator.of(context).pushReplacementNamed('/customer-cart');
         break;
       case 'Notifications':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CustomerNotifications()),
-        );
+        Navigator.of(context).pushReplacementNamed('/customer-notifications');
+        break;
+      case 'User Management':
+        // Navigate to user management page with appropriate role
+        final appRole = role == nav.UserRole.admin ? AppRole.admin : AppRole.moderator;
+        Navigator.of(context).pushReplacementNamed('/user-management', arguments: appRole);
+        break;
+      case 'Customer':
+        // Owner navigation to customer management
+        if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-manage-customer');
+        }
+        break;
+      case 'Moderator/Admin':
+        // Owner navigation to moderator/admin management
+        if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-manage-moderatoradmin');
+        }
         break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(

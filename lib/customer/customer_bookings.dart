@@ -202,25 +202,12 @@ class _CustomerBookingsState extends State<CustomerBookings> {
     });
 
     if (index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const RoomsPage()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Rooms page'),
-          backgroundColor: Color(0xFF468FAF),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Navigate to dashboard and clear stack so no back button appears
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     } else if (index == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const CustomerCart()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Cart page'),
-          backgroundColor: Color(0xFF468FAF),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      Navigator.of(context).pushReplacementNamed('/customer-cart');
     } else if (index == 3) {
-      Navigator.pushNamed(context, '/profile');
+      Navigator.of(context).pushReplacementNamed('/profile');
     }
   }
 
@@ -260,7 +247,7 @@ class _CustomerBookingsState extends State<CustomerBookings> {
     if (confirmed == true) {
       await Session.clear();
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }

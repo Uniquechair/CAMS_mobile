@@ -55,6 +55,7 @@ class _RoomsPageState extends State<RoomsPage> {
   List<Property> filteredProperties = [];
   bool _isLoading = true;
   String? _errorMessage;
+  List<String> availableLocations = [];
   
   // Filter variables
   String? selectedLocation;
@@ -141,6 +142,13 @@ class _RoomsPageState extends State<RoomsPage> {
         setState(() {
           allProperties = loadedProperties;
           filteredProperties = loadedProperties;
+          // Extract unique locations from properties
+          availableLocations = loadedProperties
+              .map((p) => p.location)
+              .where((loc) => loc.isNotEmpty && loc != 'Unknown Location')
+              .toSet()
+              .toList()
+            ..sort();
           _isLoading = false;
         });
       }
@@ -188,7 +196,7 @@ class _RoomsPageState extends State<RoomsPage> {
       
       // Navigate to login screen
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -234,6 +242,7 @@ class _RoomsPageState extends State<RoomsPage> {
       key: _scaffoldKey,
       backgroundColor: const Color(0xFFE7F0FF),
       appBar: AppBar(
+        automaticallyImplyLeading: false, // No back button on dashboard
         backgroundColor: Colors.white,
         elevation: 0,
         title: Row(
@@ -281,10 +290,7 @@ class _RoomsPageState extends State<RoomsPage> {
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const CustomerNotifications()),
-              );
+              Navigator.of(context).pushNamed('/customer-notifications');
             },
           ),
           IconButton(
@@ -785,12 +791,14 @@ class _RoomsPageState extends State<RoomsPage> {
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      items: ['Miami Beach', 'Aspen', 'New York', 'Malibu', 'Lake Tahoe', 'Scottsdale']
-                          .map((location) => DropdownMenuItem(
-                                value: location,
-                                child: Text(location),
-                              ))
-                          .toList(),
+                      items: availableLocations.isEmpty
+                          ? [const DropdownMenuItem(value: null, child: Text('No locations available'))]
+                          : availableLocations
+                              .map((location) => DropdownMenuItem(
+                                    value: location,
+                                    child: Text(location),
+                                  ))
+                              .toList(),
                       onChanged: (value) {
                         setModalState(() {
                           selectedLocation = value;
@@ -982,18 +990,12 @@ class _RoomsPageState extends State<RoomsPage> {
     }
     if (index == 1) {
       // Cart
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CustomerCart()),
-      );
+      Navigator.of(context).pushNamed('/customer-cart');
       return;
     }
     if (index == 2) {
       // Bookings
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CustomerBookings()),
-      );
+      Navigator.of(context).pushNamed('/customer-bookings');
       return;
     }
     if (index == 3) {
@@ -1019,6 +1021,8 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
   DateTime? checkOutDate;
   int numberOfGuests = 1;
   int _currentImageIndex = 0;
+  bool _isCheckingAvailability = false;
+  bool _isDateUnavailable = false;
 
   double calculateTotalPrice() {
     if (checkInDate == null || checkOutDate == null) return 0;
@@ -1067,11 +1071,23 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
   }
 
   Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
+    final DateTime today = DateTime.now();
+    // For check-in: from today onward
+    // For check-out: must be at least one day after check-in date
+    final DateTime firstAllowedDate = isCheckIn 
+        ? today 
+        : (checkInDate ?? today).add(const Duration(days: 1));
+    
+    // Set initial date appropriately
+    final DateTime initialDate = isCheckIn
+        ? (checkInDate ?? today)
+        : (checkOutDate ?? firstAllowedDate);
+    
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initialDate.isBefore(firstAllowedDate) ? firstAllowedDate : initialDate,
+      firstDate: firstAllowedDate,
+      lastDate: today.add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -1087,13 +1103,53 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
       setState(() {
         if (isCheckIn) {
           checkInDate = picked;
-          if (checkOutDate != null && checkOutDate!.isBefore(picked)) {
-            checkOutDate = null;
+          // If checkout is before new check-in, reset it to check-in + 1 day
+          if (checkOutDate != null && checkOutDate!.isBefore(picked.add(const Duration(days: 1)))) {
+            checkOutDate = picked.add(const Duration(days: 1));
           }
         } else {
           checkOutDate = picked;
         }
       });
+      // Check availability after date selection
+      if (checkInDate != null && checkOutDate != null) {
+        _checkAvailability();
+      }
+    }
+  }
+
+  Future<void> _checkAvailability() async {
+    if (checkInDate == null) return;
+    
+    setState(() {
+      _isCheckingAvailability = true;
+      _isDateUnavailable = false;
+    });
+
+    // Format check-in date string as used in reservation API
+    final checkInDateStr =
+        '${checkInDate!.year}-${checkInDate!.month.toString().padLeft(2, '0')}-${checkInDate!.day.toString().padLeft(2, '0')} 00:00:00';
+
+    try {
+      final hasOverlap = await api.checkDateOverlap(
+        propertyId: int.parse(widget.property.id),
+        checkIn: checkInDateStr,
+      );
+      if (mounted) {
+        setState(() {
+          _isDateUnavailable = hasOverlap;
+          _isCheckingAvailability = false;
+        });
+      }
+    } catch (e) {
+      // If the check fails, treat as available but log the error
+      debugPrint('PropertyDetailPage: Failed to check availability: $e');
+      if (mounted) {
+        setState(() {
+          _isDateUnavailable = false;
+          _isCheckingAvailability = false;
+        });
+      }
     }
   }
 
@@ -1600,7 +1656,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: _showBookingInformationDialog,
+                            onPressed: _isCheckingAvailability ? null : _showBookingInformationDialog,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0077B6),
                               foregroundColor: Colors.white,
@@ -1609,11 +1665,16 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
-                              'Book and Pay',
-                              style: TextStyle(
+                            child: Text(
+                              _isCheckingAvailability
+                                  ? 'Checking...'
+                                  : _isDateUnavailable
+                                      ? 'Enquiry'
+                                      : 'Book and Pay',
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -1658,21 +1719,58 @@ class BookingInformationDialog extends StatefulWidget {
 class _BookingInformationDialogState extends State<BookingInformationDialog> {
   final _formKey = GlobalKey<FormState>();
   String selectedTitle = 'Mr.';
-  final TextEditingController _firstNameController = TextEditingController(text: 'John');   //TODO: Dynamic autofill from user profile
-  final TextEditingController _lastNameController = TextEditingController(text: 'Doe');
-  final TextEditingController _emailController = TextEditingController(text: 'john.doe@email.com');
-  final TextEditingController _phoneController = TextEditingController(text: '0123456789');
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _requestsController = TextEditingController();
 
   bool _canEditDates = true;
   late DateTime _editableCheckIn;
   late DateTime _editableCheckOut;
+  bool _isCheckingAvailability = false;
+  bool _isDateUnavailable = false;
+  bool _isLoadingUserData = true;
 
   @override
   void initState() {
     super.initState();
     _editableCheckIn = widget.checkInDate;
     _editableCheckOut = widget.checkOutDate;
+    _loadUserData();
+    _checkAvailability(); // initial check for the provided dates
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final userid = await Session.getUserId();
+      if (userid != null) {
+        final userData = await api.fetchUserData(userid);
+        if (mounted) {
+          setState(() {
+            _firstNameController.text = userData['ufirstname']?.toString() ?? '';
+            _lastNameController.text = userData['ulastname']?.toString() ?? '';
+            _emailController.text = userData['uemail']?.toString() ?? '';
+            _phoneController.text = userData['uphoneno']?.toString() ?? '';
+            selectedTitle = userData['utitle']?.toString() ?? 'Mr.';
+            _isLoadingUserData = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isLoadingUserData = false;
+          });
+        }
+      }
+    } catch (error) {
+      print('Error loading user data: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingUserData = false;
+        });
+      }
+    }
   }
 
   @override
@@ -1721,11 +1819,29 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
   }
 
   Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
+    // For check-in: from today onward.
+    // For check-out: must be at least one day after current check-in.
+    final DateTime today = DateTime.now();
+    final DateTime firstAllowedDate =
+        isCheckIn ? today : _editableCheckIn.add(const Duration(days: 1));
+
+    // Ensure initial date respects the minimum.
+    final DateTime initialDate;
+    if (isCheckIn) {
+      initialDate = _editableCheckIn.isBefore(firstAllowedDate)
+          ? firstAllowedDate
+          : _editableCheckIn;
+    } else {
+      initialDate = _editableCheckOut.isBefore(firstAllowedDate)
+          ? firstAllowedDate
+          : _editableCheckOut;
+    }
+
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: isCheckIn ? _editableCheckIn : _editableCheckOut,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initialDate,
+      firstDate: firstAllowedDate,
+      lastDate: today.add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -1748,11 +1864,44 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
           _editableCheckOut = picked;
         }
       });
+      await _checkAvailability();
     }
   }
 
   int get nights => _editableCheckOut.difference(_editableCheckIn).inDays;
   double get totalPrice => nights * widget.property.pricePerNight;
+
+  Future<void> _checkAvailability() async {
+    setState(() {
+      _isCheckingAvailability = true;
+      _isDateUnavailable = false;
+    });
+
+    // Format check-in date string as used in reservation API
+    final checkInDateStr =
+        '${_editableCheckIn.year}-${_editableCheckIn.month.toString().padLeft(2, '0')}-${_editableCheckIn.day.toString().padLeft(2, '0')} 00:00:00';
+
+    try {
+      final hasOverlap = await api.checkDateOverlap(
+        propertyId: int.parse(widget.property.id),
+        checkIn: checkInDateStr,
+      );
+      if (mounted) {
+        setState(() {
+          _isDateUnavailable = hasOverlap;
+        });
+      }
+    } catch (e) {
+      // If the check fails, treat as available but log the error
+      debugPrint('BookingInformationDialog: Failed to check availability: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingAvailability = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2203,8 +2352,10 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
+                      child: ElevatedButton(
+                      onPressed: _isCheckingAvailability
+                          ? null
+                          : () async {
                         if (_formKey.currentState!.validate()) {
                           // Show loading dialog
                           showDialog(
@@ -2217,6 +2368,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                             ),
                           );
 
+                          bool isEnquiryResult = false;
                           try {
                             // Validate that phone number is not empty
                             final phoneNumber = _phoneController.text.trim();
@@ -2245,12 +2397,21 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               print('CustomerRooms: Check-out date string: $checkOutDateStr');
                               print('CustomerRooms: Check-in DateTime values - year: ${_editableCheckIn.year}, month: ${_editableCheckIn.month}, day: ${_editableCheckIn.day}');
                               print('CustomerRooms: Check-out DateTime values - year: ${_editableCheckOut.year}, month: ${_editableCheckOut.month}, day: ${_editableCheckOut.day}');
-                              
+
+                              // Check if the selected check-in date overlaps an existing reservation
+                              final hasOverlap = await api.checkDateOverlap(
+                                propertyId: int.parse(widget.property.id),
+                                checkIn: checkInDateStr,
+                              );
+
                               // Validate dates are reasonable
                               if (_editableCheckIn.year < 2000 || _editableCheckIn.year > 2100 ||
                                   _editableCheckOut.year < 2000 || _editableCheckOut.year > 2100) {
                                 throw Exception('Invalid year in date selection');
                               }
+                              
+                              // Determine reservation status based on date availability
+                              final reservationStatus = hasOverlap ? 'Enquiry' : 'Pending';
                               
                               final reservationData = {
                                 'propertyid': int.parse(widget.property.id),
@@ -2258,7 +2419,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                                 'checkindatetime': checkInDateStr,
                                 'checkoutdatetime': checkOutDateStr,
                                 'guestpaxno': widget.numberOfGuests,
-                                'reservationstatus': 'Pending',
+                                'reservationstatus': reservationStatus,
                                 'totalprice': totalPrice,
                                 'rctitle': selectedTitle, // Title prefix (Mr., Mrs., Ms.)
                                 'rcfirstname': _firstNameController.text.trim(),
@@ -2271,7 +2432,26 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               print('CustomerRooms: Full reservation data: $reservationData');
                               
                               // Call API to create reservation
-                              await api.createReservation(reservationData);
+                              final reservationResult = await api.createReservation(reservationData);
+                              
+                              // If it's an enquiry, send notifications to moderator, admin, and owner
+                              if (hasOverlap && reservationResult['reservationid'] != null) {
+                                try {
+                                  final reservationId = reservationResult['reservationid'] is int 
+                                      ? reservationResult['reservationid'] 
+                                      : int.parse(reservationResult['reservationid'].toString());
+                                  print('CustomerRooms: Sending enquiry notification for reservation ID: $reservationId');
+                                  final bookingRequestResult = await api.requestBooking(reservationId);
+                                  print('CustomerRooms: Enquiry notification sent successfully. Result: $bookingRequestResult');
+                                } catch (e) {
+                                  // Log error but don't fail the reservation creation
+                                  print('CustomerRooms: Failed to send enquiry notification: $e');
+                                  print('CustomerRooms: Error details: ${e.toString()}');
+                                }
+                              }
+                              
+                              // Store hasOverlap for use in success message
+                              isEnquiryResult = hasOverlap;
                               
                               // Close loading dialog on success
                               if (mounted) Navigator.pop(context);
@@ -2320,7 +2500,9 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Text(
-                                              'Booking added to cart! Total: RM ${totalPrice.toStringAsFixed(2)} for $nights night(s)',
+                                              isEnquiryResult
+                                                  ? 'Enquiry added to cart! Waiting for approval. Total: RM ${totalPrice.toStringAsFixed(2)} for $nights night(s)'
+                                                  : 'Booking added to cart! Total: RM ${totalPrice.toStringAsFixed(2)} for $nights night(s)',
                                               style: const TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 16,
@@ -2331,10 +2513,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                                           TextButton(
                                             onPressed: () {
                                               overlayEntry.remove();
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(builder: (context) => const CustomerCart()),
-                                              );
+                                              Navigator.of(context).pushNamed('/customer-cart');
                                             },
                                             child: const Text(
                                               'View Cart',
@@ -2406,9 +2585,11 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
-                        'Add to Cart',
-                        style: TextStyle(
+                      child: Text(
+                        _isCheckingAvailability
+                            ? 'Checking...'
+                            : 'Add to Cart',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,

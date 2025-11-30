@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'customer/customer_rooms.dart';
+import 'customer/customer_cart.dart';
+import 'customer/customer_bookings.dart';
+import 'customer/customer_notification.dart';
 import 'beforeLogin/pre_customer_room.dart';
 import 'moderator/moderator_dashboard.dart';
+import 'moderator/moderator_notification.dart';
 import 'admin/admin_dashboard.dart';
+import 'admin/admin_notification.dart';
 import 'owner/owner_dashboard.dart';
+import 'owner/owner_property_listing.dart';
+import 'owner/owner_reservation.dart';
+import 'owner/owner_manage_customer.dart';
+import 'owner/owner_manage_moderatoradmin.dart';
 import 'shared_admin_moderator/manage_service.dart';
 import 'shared_admin_moderator/user_management.dart';
 import 'shared_admin_moderator/manage_booking.dart';
@@ -14,6 +23,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/rbac_test_screen.dart';
+import 'forget_password.dart';
 import 'services/session.dart';
 import 'services/rbac_service.dart';
 
@@ -136,6 +146,7 @@ class _CamsAppState extends State<CamsApp> {
         '/before-login': (context) => const CustomerRoomsNotLogin(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
+        '/forget-password': (context) => const ForgotPasswordRequestPage(),
         // Centralized post-login redirect so routing happens in app.dart
         '/after-login': (context) => const _PostLoginRedirect(),
         '/home': (context) => const RoomsPage(),
@@ -158,6 +169,19 @@ class _CamsAppState extends State<CamsApp> {
           return AdminUserManagementPage(viewerRole: role);
         },
         '/manage-booking': (context) => const AdminManageBooking(),
+        // Customer routes
+        '/customer-cart': (context) => const CustomerCart(),
+        '/customer-bookings': (context) => const CustomerBookings(),
+        '/customer-notifications': (context) => const CustomerNotifications(),
+        // Admin routes
+        '/admin-notifications': (context) => const AdminNotifications(),
+        // Moderator routes
+        '/moderator-notifications': (context) => const ModeratorNotifications(),
+        // Owner routes
+        '/owner-property-listing': (context) => const OwnerPropertyListingPage(),
+        '/owner-reservation': (context) => const OwnerReservationPage(),
+        '/owner-manage-customer': (context) => const OwnerManageCustomers(),
+        '/owner-manage-moderatoradmin': (context) => const OwnerManageOperators(),
         '/rbac-test': (context) => const RBACTestScreen(),
       },
     );
@@ -209,6 +233,93 @@ class _PostLoginRedirectState extends State<_PostLoginRedirect> {
           color: Color(0xFF0077B6),
         ),
       ),
+    );
+  }
+}
+
+// Centralized Navigation Helper
+// All navigation should use these methods to ensure routes are managed in app.dart
+class AppNavigator {
+  // Push a named route
+  static Future<T?>? pushNamed<T>(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+  }) {
+    return Navigator.pushNamed<T>(
+      context,
+      routeName,
+      arguments: arguments,
+    );
+  }
+
+  // Push a named route and remove all previous routes
+  static Future<T?>? pushNamedAndRemoveUntil<T>(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+    bool Function(Route<dynamic>)? predicate,
+  }) {
+    return Navigator.pushNamedAndRemoveUntil<T>(
+      context,
+      routeName,
+      predicate ?? (route) => false,
+      arguments: arguments,
+    );
+  }
+
+  // Push a named route using the global navigator key
+  static Future<T?>? pushNamedGlobal<T>(
+    String routeName, {
+    Object? arguments,
+  }) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator != null) {
+      return navigator.pushNamed<T>(
+        routeName,
+        arguments: arguments,
+      );
+    }
+    return null;
+  }
+
+  // Push a named route and remove all previous routes using global navigator key
+  static Future<T?>? pushNamedAndRemoveUntilGlobal<T>(
+    String routeName, {
+    Object? arguments,
+    bool Function(Route<dynamic>)? predicate,
+  }) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator != null) {
+      return navigator.pushNamedAndRemoveUntil<T>(
+        routeName,
+        predicate ?? (route) => false,
+        arguments: arguments,
+      );
+    }
+    return null;
+  }
+
+  // Pop the current route
+  static void pop<T>(BuildContext context, [T? result]) {
+    Navigator.pop<T>(context, result);
+  }
+
+  // Pop using root navigator
+  static void popRoot(BuildContext context) {
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  // Replace current route
+  static Future<T?>? pushReplacementNamed<T>(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+  }) {
+    return Navigator.pushReplacementNamed<T, T>(
+      context,
+      routeName,
+      arguments: arguments,
     );
   }
 }

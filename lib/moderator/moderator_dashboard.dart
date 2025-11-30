@@ -34,6 +34,10 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
   double _totalRevenue = 0.0;
   double _guestSatisfaction = 0.0;
   bool _isLoadingStats = false;
+  
+  // Booking requests
+  List<Map<String, dynamic>> _pendingBookings = [];
+  bool _isLoadingBookings = false;
 
   void _openManageServices() {
     final nav = appNavigatorKey.currentState;
@@ -53,9 +57,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     } catch (_) {
       // ignore: avoid_print
       print('MOD: named route failed, pushing ManageServicesPage directly');
-      Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(builder: (_) => const ManageServicesPage()),
-      );
+      Navigator.of(context, rootNavigator: true).pushNamed('/manage-services');
     }
   }
 
@@ -64,6 +66,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     super.initState();
     _loadUserRole();
     _loadDashboardStats();
+    _loadPendingBookings();
   }
 
   Future<void> _loadUserRole() async {
@@ -164,7 +167,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     final userid = await Session.getUserId();
     if (userid != null) {
       try {
-        final occupancyData = await api.fetchOccupancyRate(userid);
+        final occupancyData = await api.fetchOccupancyRate(userid, paidOnly: true);
         
         double occupancyRate = 0.0;
         if (occupancyData['occupancyRate'] != null) {
@@ -193,7 +196,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
       }
 
       try {
-        final revPARData = await api.fetchRevPAR(userid);
+        final revPARData = await api.fetchRevPAR(userid, paidOnly: true);
         
         double revPAR = 0.0;
         if (revPARData['monthlyData'] != null && revPARData['monthlyData'] is List) {
@@ -219,7 +222,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
       }
 
       try {
-        final financeData = await api.fetchFinance(userid);
+        final financeData = await api.fetchFinance(userid, paidOnly: true);
         
         double revenue = 0.0;
         if (financeData['monthlyData'] != null && financeData['monthlyData'] is List) {
@@ -242,7 +245,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
       }
 
       try {
-        final satisfactionData = await api.fetchGuestSatisfactionScore(userid);
+        final satisfactionData = await api.fetchGuestSatisfactionScore(userid, paidOnly: true);
         
         double satisfaction = 0.0;
         if (satisfactionData['monthlyData'] != null && satisfactionData['monthlyData'] is List) {
@@ -271,6 +274,254 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     }
     
     print('ModeratorDashboard: Statistics loading complete');
+  }
+
+  Future<void> _loadPendingBookings() async {
+    setState(() {
+      _isLoadingBookings = true;
+    });
+
+    try {
+      final reservations = await api.fetchReservationsForAdminModerator();
+      
+      // Filter for pending bookings only
+      final pending = reservations.where((r) {
+        final status = r['reservationstatus']?.toString().toLowerCase() ?? 
+                      r['status']?.toString().toLowerCase() ?? '';
+        return status == 'pending' || status == 'requested';
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _pendingBookings = pending.map((r) => r as Map<String, dynamic>).toList();
+          _isLoadingBookings = false;
+        });
+      }
+      print('ModeratorDashboard: Loaded ${_pendingBookings.length} pending bookings');
+    } catch (error) {
+      print('ModeratorDashboard: Error loading pending bookings: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingBookings = false;
+          _pendingBookings = [];
+        });
+      }
+    }
+  }
+
+  Future<void> _acceptBooking(Map<String, dynamic> booking) async {
+    final reservationId = booking['reservationid'];
+    if (reservationId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Accept Booking', style: TextStyle(color: Colors.black)),
+        content: Text(
+          'Accept booking request for ${booking['propertyaddress'] ?? booking['property'] ?? 'this property'}?',
+          style: const TextStyle(color: Colors.black),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await api.updateReservationStatus(reservationId, 'Accepted');
+      try {
+        await api.acceptBooking(reservationId);
+      } catch (notifyError) {
+        print('ModeratorDashboard: acceptBooking notification failed: $notifyError');
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking accepted successfully'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        await _loadPendingBookings();
+        await _loadDashboardStats();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to accept booking: $error'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectBooking(Map<String, dynamic> booking) async {
+    final reservationId = booking['reservationid'];
+    if (reservationId == null) return;
+
+    // Check for alternative available rooms
+    final propertyId = booking['propertyid'];
+    List<Map<String, dynamic>> alternativeRooms = [];
+    
+    if (propertyId != null) {
+      try {
+        final properties = await api.fetchPropertiesListingTable();
+        final allProperties = properties['properties'] as List? ?? [];
+        
+        // Filter for available properties (excluding the current one)
+        alternativeRooms = allProperties
+            .where((p) => 
+                p['propertyid'] != propertyId &&
+                (p['propertystatus']?.toString().toLowerCase() == 'available'))
+            .map((p) => p as Map<String, dynamic>)
+            .toList();
+      } catch (error) {
+        print('ModeratorDashboard: Error checking alternative rooms: $error');
+      }
+    }
+
+    final hasAlternatives = alternativeRooms.isNotEmpty;
+
+    // Show dialog with options
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: const Text('Reject Booking', style: TextStyle(color: Colors.black)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reject booking request for ${booking['propertyaddress'] ?? booking['property'] ?? 'this property'}?',
+              style: const TextStyle(color: Colors.black),
+            ),
+            if (!hasAlternatives) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'No alternative rooms are currently available.',
+                style: TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Would you like to notify your admin to suggest a room?',
+                style: TextStyle(color: Colors.black),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          if (hasAlternatives)
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'reject'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reject'),
+            )
+          else ...[
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'reject'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reject Only'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'notify'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0077B6),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reject & Notify Admin'),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (action == null || action == 'cancel') return;
+
+    try {
+      // Reject the booking
+      await api.updateReservationStatus(reservationId, 'Rejected');
+
+      // If notify admin was selected, send notification
+      if (action == 'notify') {
+        try {
+          await api.notifyAdminForRoomSuggestion(
+            reservationId,
+            'No alternative rooms available. Please suggest a room for this customer.',
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Booking rejected and admin notified successfully'),
+                backgroundColor: Color(0xFF10B981),
+              ),
+            );
+          }
+        } catch (notifyError) {
+          print('ModeratorDashboard: Failed to notify admin: $notifyError');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Booking rejected, but failed to notify admin'),
+                backgroundColor: Color(0xFFF59E0B),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Booking rejected successfully'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        }
+      }
+
+      if (mounted) {
+        await _loadPendingBookings();
+        await _loadDashboardStats();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reject booking: $error'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -302,8 +553,8 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     // Clear the session data
     await Session.clear();
     if (mounted) {
-      // Navigate back to the login screen and remove all previous routes
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      // Navigate back to the before-login screen
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -359,10 +610,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ModeratorNotifications()),
-              );
+              Navigator.of(context).pushNamed('/moderator-notifications');
             },
           ),
           IconButton(
@@ -372,7 +620,10 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadDashboardStats,
+        onRefresh: () async {
+          await _loadDashboardStats();
+          await _loadPendingBookings();
+        },
         color: const Color(0xFF0077B6),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -411,6 +662,8 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
+        currentPageLabel: 'Dashboard',
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: _selectedIndex,
@@ -449,6 +702,11 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     }
     if (label == 'Profile') {
       Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (label == 'User Management') {
+      // Navigate to user management page with moderator role
+      Navigator.of(context).pushNamed('/user-management', arguments: AppRole.moderator);
       return;
     }
     if (label == 'PropertyListing' || label == 'Properties') {
@@ -753,7 +1011,9 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
                   ],
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.of(context).pushNamed('/manage-booking');
+                  },
                   child: const Text(
                     'View All',
                     style: TextStyle(
@@ -766,26 +1026,55 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
             ),
           ),
           const Divider(height: 1),
-          _buildBookingRequestItem(   // TODO: change to dynamic data
-            title: 'Kyle Miller',
-            subtitle: 'Beach Resort',
-            price: 'RM 400',
-          ),
-          _buildBookingRequestItem(
-            title: 'Hannah Evans',
-            subtitle: 'City Apartment',
-            price: 'RM 600',
-          ),
+          if (_isLoadingBookings)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_pendingBookings.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.event_busy,
+                    size: 48,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No pending bookings',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._pendingBookings.take(5).map((booking) => _buildBookingRequestItem(booking)),
         ],
       ),
     );
   }
 
-  Widget _buildBookingRequestItem({
-    required String title,
-    required String subtitle,
-    required String price,
-  }) {
+  Widget _buildBookingRequestItem(Map<String, dynamic> booking) {
+    final customerName = booking['customername'] ?? 
+                        booking['username'] ?? 
+                        booking['customer_name'] ?? 
+                        'Customer';
+    final propertyName = booking['propertyaddress'] ?? 
+                        booking['property'] ?? 
+                        booking['property_name'] ?? 
+                        'Property';
+    final price = booking['totalprice'] ?? 
+                  booking['price'] ?? 
+                  booking['total_price'] ?? 
+                  0.0;
+    final priceStr = price is num ? 'RM ${price.toStringAsFixed(2)}' : 'RM 0.00';
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: Container(
@@ -800,7 +1089,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         child: const Icon(Icons.apartment, color: Colors.white, size: 24),
       ),
       title: Text(
-        title,
+        customerName.toString(),
         style: const TextStyle(
           fontWeight: FontWeight.w600,
           color: Color(0xFF1E293B),
@@ -808,7 +1097,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
         ),
       ),
       subtitle: Text(
-        subtitle,
+        propertyName.toString(),
         style: const TextStyle(
           color: Color(0xFF64748B),
           fontSize: 13,
@@ -835,7 +1124,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
           ),
           const SizedBox(height: 4),
           Text(
-            price,
+            priceStr,
             style: const TextStyle(
               color: Color.fromARGB(255, 10, 105, 239),
               fontSize: 11,
@@ -843,7 +1132,104 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
           ),
         ],
       ),
-      onTap: () {},
+      onTap: () {
+        _showBookingDetailsDialog(booking);
+      },
+    );
+  }
+
+  void _showBookingDetailsDialog(Map<String, dynamic> booking) {
+    final customerName = booking['customername'] ?? 
+                        booking['username'] ?? 
+                        booking['customer_name'] ?? 
+                        'Customer';
+    final propertyName = booking['propertyaddress'] ?? 
+                        booking['property'] ?? 
+                        booking['property_name'] ?? 
+                        'Property';
+    final price = booking['totalprice'] ?? 
+                  booking['price'] ?? 
+                  booking['total_price'] ?? 
+                  0.0;
+    final priceStr = price is num ? 'RM ${price.toStringAsFixed(2)}' : 'RM 0.00';
+    final checkIn = booking['checkindate'] ?? booking['check_in_date'] ?? 'N/A';
+    final checkOut = booking['checkoutdate'] ?? booking['check_out_date'] ?? 'N/A';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: Text(
+          'Booking Details',
+          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Customer', customerName.toString()),
+            _buildDetailRow('Property', propertyName.toString()),
+            _buildDetailRow('Check-in', checkIn.toString()),
+            _buildDetailRow('Check-out', checkOut.toString()),
+            _buildDetailRow('Price', priceStr),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _acceptBooking(booking);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Accept'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _rejectBooking(booking);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reject'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.black),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

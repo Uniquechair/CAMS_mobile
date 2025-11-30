@@ -3,6 +3,7 @@ import 'customer_rooms.dart';
 import 'customer_cart.dart';
 import 'customer_bookings.dart';
 import '../services/notification_service.dart';
+import '../api.dart' as api;
 
 class CustomerNotifications extends StatefulWidget {
   const CustomerNotifications({super.key});
@@ -15,118 +16,133 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
   int _selectedIndex = -1;
   String _selectedFilter = 'All';
   late Future<void> _notificationInit;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> allNotifications = [];
 
   @override
   void initState() {
     super.initState();
     _notificationInit = NotificationService().initialize();
+    _loadNotifications();
   }
 
-  List<Map<String, dynamic>> allNotifications = [
-    {
-      'id': 1,
-      'type': 'payment_reminder',
-      'title': 'Payment Reminder',
-      'message': 'Your payment for Seaside Villa is due in 2 days. Please complete your payment to confirm your booking.',
-      'propertyName': 'Seaside Villa',
-      'time': '2 hours ago',
-      'isRead': false,
-      'priority': 'high',
-    },
-    {
-      'id': 2,
-      'type': 'booking_upcoming',
-      'title': 'Upcoming Booking',
-      'message': 'Your stay at Mountain Retreat is coming up in 3 days. Check-in: 12/01/2025',
-      'propertyName': 'Mountain Retreat',
-      'time': '5 hours ago',
-      'isRead': false,
-      'priority': 'medium',
-    },
-    {
-      'id': 3,
-      'type': 'booking_accepted',
-      'title': 'Booking Accepted',
-      'message': 'Great news! Your booking request for Urban Loft has been accepted by the administrator.',
-      'propertyName': 'Urban Loft',
-      'time': '1 day ago',
-      'isRead': true,
-      'priority': 'high',
-    },
-    {
-      'id': 4,
-      'type': 'booking_rejected',
-      'title': 'Booking Rejected',
-      'message': 'Unfortunately, your booking request for Beach House has been rejected. The property is not available for your selected dates.',
-      'propertyName': 'Beach House',
-      'time': '2 days ago',
-      'isRead': true,
-      'priority': 'high',
-    },
-    {
-      'id': 5,
-      'type': 'room_suggestion',
-      'title': 'Room Suggestion',
-      'message': 'Based on your preferences, we suggest checking out Luxury Suite. It matches your search criteria perfectly!',
-      'propertyName': 'Luxury Suite',
-      'time': '3 days ago',
-      'isRead': false,
-      'priority': 'low',
-    },
-    {
-      'id': 6,
-      'type': 'payment_reminder',
-      'title': 'Payment Due Soon',
-      'message': 'Final reminder: Payment for City Apartment is due tomorrow. Act now to avoid cancellation.',
-      'propertyName': 'City Apartment',
-      'time': '4 hours ago',
-      'isRead': false,
-      'priority': 'high',
-    },
-  ];
+  Future<void> _loadNotifications() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final notifications = await api.fetchNotifications();
+      setState(() {
+        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        _isLoading = false;
+      });
+    } catch (error) {
+      print('Error loading notifications: $error');
+      setState(() {
+        _isLoading = false;
+        allNotifications = [];
+      });
+    }
+  }
 
   List<Map<String, dynamic>> get filteredNotifications {
     if (_selectedFilter == 'All') {
       return allNotifications;
     } else if (_selectedFilter == 'Unread') {
-      return allNotifications.where((n) => !n['isRead']).toList();
+      return allNotifications.where((n) => !(n['isRead'] ?? false)).toList();
     }
     return allNotifications.where((n) => n['type'] == _selectedFilter).toList();
   }
 
-  int get unreadCount => allNotifications.where((n) => !n['isRead']).length;
-
-  void _markAsRead(int id) {
-    setState(() {
-      final notification = allNotifications.firstWhere((n) => n['id'] == id);
-      notification['isRead'] = true;
-    });
+  int get unreadCount {
+    return allNotifications.where((n) => !(n['isRead'] ?? false)).length;
   }
 
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in allNotifications) {
-        notification['isRead'] = true;
+  Future<void> _markAsRead(int id) async {
+    try {
+      final success = await api.markNotificationAsRead(id);
+      if (success) {
+        setState(() {
+          final notification = allNotifications.firstWhere((n) => n['id'] == id);
+          notification['isRead'] = true;
+        });
       }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('All notifications marked as read'),
-        backgroundColor: Color(0xFF468FAF),
-      ),
-    );
+    } catch (error) {
+      print('Error marking notification as read: $error');
+      setState(() {
+        final notification = allNotifications.firstWhere((n) => n['id'] == id);
+        notification['isRead'] = true;
+      });
+    }
   }
 
-  void _deleteNotification(int id) {
-    setState(() {
-      allNotifications.removeWhere((n) => n['id'] == id);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notification deleted'),
-        backgroundColor: Color(0xFF468FAF),
-      ),
-    );
+  Future<void> _markAllAsRead() async {
+    try {
+      final success = await api.markAllNotificationsAsRead();
+      if (success) {
+        setState(() {
+          for (var notification in allNotifications) {
+            notification['isRead'] = true;
+          }
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('All notifications marked as read'),
+              backgroundColor: Color(0xFF468FAF),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      print('Error marking all notifications as read: $error');
+      setState(() {
+        for (var notification in allNotifications) {
+          notification['isRead'] = true;
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All notifications marked as read'),
+            backgroundColor: Color(0xFF468FAF),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteNotification(int id) async {
+    try {
+      final success = await api.deleteNotification(id);
+      if (success) {
+        setState(() {
+          allNotifications.removeWhere((n) => n['id'] == id);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification deleted'),
+              backgroundColor: Color(0xFF468FAF),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      print('Error deleting notification: $error');
+      setState(() {
+        allNotifications.removeWhere((n) => n['id'] == id);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notification deleted'),
+            backgroundColor: Color(0xFF468FAF),
+          ),
+        );
+      }
+    }
   }
 
   void _navigateToPage(int index) {
@@ -135,244 +151,16 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
     });
 
     if (index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => RoomsPage()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Rooms page'),
-          backgroundColor: Color(0xFF468FAF),
-        ),
-      );
+      Navigator.of(context).pushReplacementNamed('/home');
     } else if (index == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerCart()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Cart page'),
-          backgroundColor: Color(0xFF468FAF),
-        ),
-      );
+      Navigator.of(context).pushReplacementNamed('/customer-cart');
     } else if (index == 2) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerBookings()));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigate to Bookings page'),
-          backgroundColor: Color(0xFF468FAF),
-        ),
-      );
+      Navigator.of(context).pushReplacementNamed('/customer-bookings');
+    } else if (index == 3) {
+      Navigator.of(context).pushReplacementNamed('/profile');
     }
   }
 
-  Widget _buildDemoSection() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _showDemoDialog,
-          icon: const Icon(Icons.notifications_active, size: 20),
-          label: const Text(
-            'Demo Push Notifications',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0077B6),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 2,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showDemoDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Push Notification Demo',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Choose a notification type to send',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildDemoDialogButton(
-                'Payment Due',
-                'Your payment for Seaside Villa is due in 2 days',
-                Icons.payment,
-                const Color(0xFFF59E0B),
-                () => _sendDemoNotification('payment_reminder'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Upcoming Booking',
-                'Your stay at Mountain Retreat starts in 3 days',
-                Icons.event_available,
-                const Color(0xFF0077B6),
-                () => _sendDemoNotification('booking_upcoming'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Booking Accepted',
-                'Great news! Your booking has been confirmed',
-                Icons.check_circle,
-                const Color(0xFF10B981),
-                () => _sendDemoNotification('booking_accepted'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Booking Rejected',
-                'Your booking request was not approved',
-                Icons.cancel,
-                const Color(0xFFEF4444),
-                () => _sendDemoNotification('booking_rejected'),
-              ),
-              const SizedBox(height: 12),
-              _buildDemoDialogButton(
-                'Room Suggestion',
-                'Check out Luxury Suite - matches your preferences',
-                Icons.lightbulb,
-                const Color(0xFF8B5CF6),
-                () => _sendDemoNotification('room_suggestion'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDemoDialogButton(
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed,
-  ) {
-    return InkWell(
-      onTap: () {
-        Navigator.pop(context);
-        onPressed();
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: color),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _sendDemoNotification(String type) async {
-    await _notificationInit;
-    final notifications = {
-      'payment_reminder': {
-        'title': 'Payment Reminder',
-        'body': 'Your payment for Seaside Villa is due in 2 days.',
-        'id': 1,
-      },
-      'booking_upcoming': {
-        'title': 'Upcoming Booking',
-        'body': 'Your stay at Mountain Retreat starts in 3 days!',
-        'id': 2,
-      },
-      'booking_accepted': {
-        'title': 'Booking Accepted ✓',
-        'body': 'Great news! Your booking has been confirmed.',
-        'id': 3,
-      },
-      'booking_rejected': {
-        'title': 'Booking Rejected',
-        'body': 'Your booking request was not approved.',
-        'id': 4,
-      },
-      'room_suggestion': {
-        'title': 'Room Suggestion',
-        'body': 'Check out Luxury Suite - it matches your preferences!',
-        'id': 5,
-      },
-    };
-
-    final notification = notifications[type];
-    if (notification != null) {
-      await NotificationService().showNotification(
-        id: notification['id'] as int,
-        title: notification['title'] as String,
-        body: notification['body'] as String,
-        payload: type,
-        type: type,
-      );
-      
-      if (!mounted) return;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -380,23 +168,37 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
       backgroundColor: const Color(0xFFE7F0FF),
       appBar: _buildAppBar(),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildFilterSection(),
-            Expanded(
-              child: filteredNotifications.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredNotifications.length,
-                      itemBuilder: (context, index) {
-                        return _buildNotificationCard(filteredNotifications[index]);
-                      },
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadNotifications,
+                color: const Color(0xFF92BBFF),
+                backgroundColor: Colors.white,
+                strokeWidth: 3.0,
+                child: Column(
+                  children: [
+                    _buildFilterSection(),
+                    Expanded(
+                      child: filteredNotifications.isEmpty
+                          ? SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                              child: SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.6,
+                                child: _buildEmptyState(),
+                              ),
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                              padding: const EdgeInsets.all(16),
+                              itemCount: filteredNotifications.length,
+                              itemBuilder: (context, index) {
+                                return _buildNotificationCard(filteredNotifications[index]);
+                              },
+                            ),
                     ),
-            ),
-            _buildDemoSection(),
-          ],
-        ),
+                  ],
+                ),
+              ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -417,7 +219,6 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.notifications, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -447,8 +248,9 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
-          onPressed: () {},
+          icon: const Icon(Icons.refresh, color: Color(0xFF64748B)),
+          onPressed: _loadNotifications,
+          tooltip: 'Refresh notifications',
         ),
         IconButton(
           icon: const Icon(Icons.logout, color: Color(0xFF64748B)),

@@ -39,6 +39,10 @@ dependencies:
   http: ^1.5.0
   intl: ^0.19.0
   flutter_local_notifications: ^19.5.0
+  google_fonts: ^6.3.2
+  google_sign_in: ^6.2.1
+  flutter_inappwebview: ^6.1.5
+  image_picker: ^1.0.8
 
 dev_dependencies:
   flutter_test:
@@ -82,6 +86,7 @@ flutter:
     - assets/ob2.png
     - assets/ob3.png
     - assets/bg_wave.png
+    - assets/google_logo.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

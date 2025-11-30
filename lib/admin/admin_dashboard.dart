@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../services/session.dart';
 import '../services/rbac_service.dart' as rbac;
 import '../app.dart';
@@ -34,6 +35,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   double _totalRevenue = 0.0;
   double _guestSatisfaction = 0.0;
   bool _isLoadingStats = false; // Start as false to show numbers immediately
+  bool _isProcessingApproval = false;
+  bool _isProcessingBooking = false;
+  bool _isLoadingBookings = false;
+  List<Map<String, dynamic>> _pendingListings = [];
+  List<Map<String, dynamic>> _pendingBookings = [];
 
   void _openManageServices() {
     final nav = appNavigatorKey.currentState;
@@ -54,9 +60,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // ignore: avoid_print
       print('ADMIN: named route failed, pushing ManageServicesPage directly');
       // Fallback to direct push if named route not found
-      Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(builder: (_) => const ManageServicesPage()),
-      );
+      Navigator.of(context, rootNavigator: true).pushNamed('/manage-services');
     }
   }
 
@@ -65,6 +69,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     super.initState();
     _loadUserRole();
     _loadDashboardStats();
+    _loadPendingBookings();
   }
 
   Future<void> _loadUserRole() async {
@@ -136,19 +141,46 @@ class _AdminDashboardState extends State<AdminDashboard> {
     try {
       final propertiesData = await api.fetchPropertiesListingTable();
       
-      int propertyCount = 0;
+      List<dynamic> properties = [];
       if (propertiesData['properties'] != null) {
-        propertyCount = (propertiesData['properties'] as List).length;
+        properties = List<dynamic>.from(propertiesData['properties']);
       } else if (propertiesData['data'] != null) {
-        propertyCount = (propertiesData['data'] as List).length;
+        properties = List<dynamic>.from(propertiesData['data']);
       }
+      final propertyCount = properties.length;
+
+      final pendingRequests = properties
+          .where((prop) {
+            final status = (prop['propertystatus'] ?? prop['propertyStatus'] ?? '')
+                .toString()
+                .toLowerCase();
+            final ownerRole = (prop['usergroup'] ?? prop['ownerrole'] ?? '')
+                .toString()
+                .toLowerCase();
+            return status == 'pending' && ownerRole == 'moderator';
+          })
+          .map<Map<String, dynamic>>((prop) {
+            return {
+              'propertyid': prop['propertyid'],
+              'propertyaddress': prop['propertyaddress'] ??
+                  prop['propertyDescription'] ??
+                  'Untitled Property',
+              'owner': prop['username'] ??
+                  '${prop['ufirstname'] ?? ''} ${prop['ulastname'] ?? ''}'.trim(),
+              'cluster': prop['clustername'] ?? 'Unknown Cluster',
+              'submittedAt': prop['timestamp'],
+            };
+          })
+          .toList();
       
       if (mounted) {
         setState(() {
           _totalProperties = propertyCount;
+          _pendingListings = pendingRequests;
         });
       }
       print('AdminDashboard: Total properties loaded: $_totalProperties');
+      print('AdminDashboard: Pending property requests: ${pendingRequests.length}');
     } catch (error) {
       print('AdminDashboard: Error fetching properties: $error');
     }
@@ -171,7 +203,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final userid = await Session.getUserId();
     if (userid != null) {
       try {
-        final occupancyData = await api.fetchOccupancyRate(userid);
+        final occupancyData = await api.fetchOccupancyRate(userid, paidOnly: true);
         
         double occupancyRate = 0.0;
         if (occupancyData['occupancyRate'] != null) {
@@ -203,7 +235,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
       // Fetch RevPAR
       try {
-        final revPARData = await api.fetchRevPAR(userid);
+        final revPARData = await api.fetchRevPAR(userid, paidOnly: true);
         
         double revPAR = 0.0;
         if (revPARData['monthlyData'] != null && revPARData['monthlyData'] is List) {
@@ -230,7 +262,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
       // Fetch Total Revenue
       try {
-        final financeData = await api.fetchFinance(userid);
+        final financeData = await api.fetchFinance(userid, paidOnly: true);
         
         double revenue = 0.0;
         if (financeData['monthlyData'] != null && financeData['monthlyData'] is List) {
@@ -254,7 +286,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
       // Fetch Guest Satisfaction
       try {
-        final satisfactionData = await api.fetchGuestSatisfactionScore(userid);
+        final satisfactionData = await api.fetchGuestSatisfactionScore(userid, paidOnly: true);
         
         double satisfaction = 0.0;
         if (satisfactionData['monthlyData'] != null && satisfactionData['monthlyData'] is List) {
@@ -284,6 +316,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
     
     print('AdminDashboard: Statistics loading complete');
+  }
+
+  Future<void> _loadPendingBookings() async {
+    setState(() {
+      _isLoadingBookings = true;
+    });
+
+    try {
+      final reservations = await api.fetchReservationsForAdminModerator();
+      
+      // Filter for pending bookings only
+      final pending = reservations.where((r) {
+        final status = r['reservationstatus']?.toString().toLowerCase() ?? 
+                      r['status']?.toString().toLowerCase() ?? 
+                      r['reservationStatus']?.toString().toLowerCase() ?? '';
+        return status == 'pending' || status == 'requested' || status == 'enquiry';
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _pendingBookings = pending.map((r) => r as Map<String, dynamic>).toList();
+          _isLoadingBookings = false;
+        });
+      }
+      print('AdminDashboard: Loaded ${_pendingBookings.length} pending bookings');
+    } catch (error) {
+      print('AdminDashboard: Error loading pending bookings: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingBookings = false;
+          _pendingBookings = [];
+        });
+      }
+    }
   }
 
   // Helper method to parse double values
@@ -324,8 +390,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     // Clear the session data
     await Session.clear();
     if (mounted) {
-      // Navigate back to the login screen and remove all previous routes
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      // Navigate back to the before-login screen
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -381,10 +447,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AdminNotifications()),
-              );
+              Navigator.of(context).pushNamed('/admin-notifications');
             },
           ),
           IconButton(
@@ -395,7 +458,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       drawer: _buildDrawer(),
       body: RefreshIndicator(
-        onRefresh: _loadDashboardStats,
+        onRefresh: () async {
+          await _loadDashboardStats();
+          await _loadPendingBookings();
+        },
         color: const Color(0xFF0077B6),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -437,6 +503,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
+        currentPageLabel: 'Dashboard',
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: _selectedIndex,
@@ -452,15 +520,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // More button - handled by SharedBottomNavigationBar to open drawer
       return;
     }
+    if (index == 0) {
+      // Dashboard - already on dashboard, just update selected index
+      if (_selectedIndex != 0) {
+        setState(() => _selectedIndex = 0);
+      }
+      return;
+    }
     if (index == 3) {
+      // Profile
       Navigator.of(context).pushNamed('/profile');
       return;
     }
     if (index == 1) {
+      // Properties
       Navigator.of(context).pushNamed('/manage-services');
       return;
     }
     if (index == 2) {
+      // Bookings
       Navigator.of(context).pushNamed('/manage-booking');
       return;
     }
@@ -475,6 +553,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
     if (label == 'Profile') {
       Navigator.of(context).pushNamed('/profile');
+      return;
+    }
+    if (label == 'User Management') {
+      // Navigate to user management page with admin role
+      Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin);
       return;
     }
     if (label == 'PropertyListing' || label == 'Properties') {
@@ -741,7 +824,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildApprovalQueue() { /* unchanged */ return Container(
+  Widget _buildApprovalQueue() {
+    return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -762,7 +846,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  children: const [
                     Text(
                       'Approval Queue',
                       style: TextStyle(
@@ -782,7 +866,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ],
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: _pendingListings.isEmpty
+                      ? null
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('All pending requests are shown here'),
+                            ),
+                          );
+                        },
                   child: const Text(
                     'View All',
                     style: TextStyle(
@@ -795,30 +887,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ),
           const Divider(height: 1),
-          _buildApprovalItem(   // TODO: change to dynamic data
-            title: 'Ocean View Suite',
-            subtitle: 'Chris M. • New Listing',
-            time: '2h ago',
-          ),
-          _buildApprovalItem(
-            title: 'Mountain Cabin',
-            subtitle: 'Alex B. • Price Update',
-            time: '3h ago',
-          ),
-          _buildApprovalItem(
-            title: 'City Apartment',
-            subtitle: 'Sam K. • Availability',
-            time: '1d ago',
-          ),
+          if (_pendingListings.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: const [
+                  Icon(Icons.verified_outlined, color: Color(0xFF94A3B8), size: 32),
+                  SizedBox(height: 12),
+                  Text(
+                    'No pending property requests',
+                    style: TextStyle(
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._pendingListings.take(5).map(_buildApprovalItem),
         ],
       ),
-    ); }
+    );
+  }
 
-  Widget _buildApprovalItem({
-    required String title,
-    required String subtitle,
-    required String time,
-  }) {
+  Widget _buildApprovalItem(Map<String, dynamic> listing) {
+    final propertyName = listing['propertyaddress'] ?? 'Untitled Property';
+    final owner = listing['owner'] ?? 'Moderator';
+    final cluster = listing['cluster'] ?? 'Unknown Cluster';
+    final requestTime = _formatRequestTime(listing['submittedAt']);
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: Container(
@@ -833,7 +931,292 @@ class _AdminDashboardState extends State<AdminDashboard> {
         child: const Icon(Icons.apartment, color: Colors.white, size: 24),
       ),
       title: Text(
-        title,
+        propertyName,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF1E293B),
+          fontSize: 15,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$owner • $cluster',
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+            ),
+          ),
+          if (requestTime != null)
+            Text(
+              requestTime,
+              style: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 11,
+              ),
+            ),
+        ],
+      ),
+      trailing: Wrap(
+        spacing: 8,
+        children: [
+          ElevatedButton(
+            onPressed: _isProcessingApproval
+                ? null
+                : () => _handleApprovalDecision(listing, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD1FAE5),
+              foregroundColor: const Color(0xFF15803D),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            ),
+            child: const Text('Approve'),
+          ),
+          OutlinedButton(
+            onPressed: _isProcessingApproval
+                ? null
+                : () => _handleApprovalDecision(listing, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+              side: const BorderSide(color: Color(0xFFDC2626)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            ),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleApprovalDecision(
+      Map<String, dynamic> listing, bool approve) async {
+    if (_isProcessingApproval) return;
+    final propertyId = listing['propertyid'];
+    if (propertyId == null) return;
+
+    final confirmed = await _showApprovalConfirmationDialog(
+      title: approve ? 'Approve Property' : 'Reject Property',
+      message: approve
+          ? 'Approve ${listing['propertyaddress']} for listing?'
+          : 'Reject ${listing['propertyaddress']}? This property will not be published.',
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isProcessingApproval = true);
+    try {
+      final newStatus = approve ? 'Available' : 'Rejected';
+      await api.updatePropertyStatus(propertyId, newStatus);
+      try {
+        if (approve) {
+          await api.propertyListingAccept(propertyId);
+        } else {
+          await api.propertyListingReject(propertyId);
+        }
+      } catch (notifyError) {
+        print('AdminDashboard: approval notification failed: $notifyError');
+      }
+
+      if (mounted) {
+        setState(() {
+          _pendingListings
+              .removeWhere((entry) => entry['propertyid'] == propertyId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approve
+                  ? 'Property approved successfully'
+                  : 'Property rejected successfully',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approve
+                  ? 'Failed to approve property: $error'
+                  : 'Failed to reject property: $error',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingApproval = false);
+      }
+    }
+  }
+
+  Future<bool?> _showApprovalConfirmationDialog({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _formatRequestTime(dynamic timestamp) {
+    if (timestamp == null) return null;
+    try {
+      final dateTime = DateTime.parse(timestamp.toString());
+      final difference = DateTime.now().difference(dateTime);
+      if (difference.inMinutes < 60) {
+        return '${difference.inMinutes}m ago';
+      } else if (difference.inHours < 24) {
+        return '${difference.inHours}h ago';
+      } else {
+        return '${difference.inDays}d ago';
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildBookingRequestQueue() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Booking Requests',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Awaiting for approval or rejection',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pushNamed('/manage-booking');
+                  },
+                  child: const Text(
+                    'View All',
+                    style: TextStyle(
+                      color: Color(0xFF649EFF),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (_isLoadingBookings)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_pendingBookings.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.event_busy,
+                    size: 48,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No pending bookings',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._pendingBookings.take(5).map((booking) => _buildBookingRequestItem(booking)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBookingRequestItem(Map<String, dynamic> booking) {
+    final customerName = booking['customername'] ?? 
+                        booking['customer'] ??
+                        booking['username'] ?? 
+                        booking['customer_name'] ??
+                        '${booking['rcfirstname'] ?? ''} ${booking['rclastname'] ?? ''}'.trim() ??
+                        'Customer';
+    final propertyName = booking['propertyaddress'] ?? 
+                        booking['property'] ?? 
+                        booking['property_name'] ?? 
+                        'Property';
+    final price = booking['totalprice'] ?? 
+                  booking['price'] ?? 
+                  booking['total_price'] ?? 
+                  0.0;
+    final priceStr = price is num ? 'RM ${price.toStringAsFixed(2)}' : 'RM 0.00';
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6366F1), Color(0xFF649EFF)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.apartment, color: Colors.white, size: 24),
+      ),
+      title: Text(
+        customerName.toString(),
         style: const TextStyle(
           fontWeight: FontWeight.w600,
           color: Color(0xFF1E293B),
@@ -841,7 +1224,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
       ),
       subtitle: Text(
-        subtitle,
+        propertyName.toString(),
         style: const TextStyle(
           color: Color(0xFF64748B),
           fontSize: 13,
@@ -868,141 +1251,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           const SizedBox(height: 4),
           Text(
-            time,
-            style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-      onTap: () {},
-    );
-  }
-
-  Widget _buildBookingRequestQueue() { /* unchanged */ return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Booking Requests',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Awaiting for approval or rejection',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(
-                      color: Color(0xFF649EFF),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          _buildBookingRequestItem(   // TODO: change to dynamic data
-            title: 'John Smith',
-            subtitle: 'Seaside Villa',
-            price: 'RM 1,000',
-          ),
-          _buildBookingRequestItem(
-            title: 'Serah Johnson',
-            subtitle: 'Mountain Retreat',
-            price: 'RM 750',
-          ),
-        ],
-      ),
-    ); }
-
-  Widget _buildBookingRequestItem({
-    required String title,
-    required String subtitle,
-    required String price,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF6366F1), Color(0xFF649EFF)],
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.apartment, color: Colors.white, size: 24),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF1E293B),
-          fontSize: 15,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          color: Color(0xFF64748B),
-          fontSize: 13,
-        ),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color.fromRGBO(29, 221, 8, 1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              'Active',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            price,
+            priceStr,
             style: const TextStyle(
               color: Color.fromARGB(255, 10, 105, 239),
               fontSize: 11,
@@ -1010,8 +1259,216 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-      onTap: () {},
+      onTap: () {
+        _showBookingDetailsDialog(booking);
+      },
     );
+  }
+
+  void _showBookingDetailsDialog(Map<String, dynamic> booking) {
+    final customerName = booking['customername'] ?? 
+                        booking['customer'] ??
+                        booking['username'] ?? 
+                        booking['customer_name'] ??
+                        '${booking['rcfirstname'] ?? ''} ${booking['rclastname'] ?? ''}'.trim() ??
+                        'Customer';
+    final propertyName = booking['propertyaddress'] ?? 
+                        booking['property'] ?? 
+                        booking['property_name'] ?? 
+                        'Property';
+    final price = booking['totalprice'] ?? 
+                  booking['price'] ?? 
+                  booking['total_price'] ?? 
+                  0.0;
+    final priceStr = price is num ? 'RM ${price.toStringAsFixed(2)}' : 'RM 0.00';
+    final checkIn = booking['checkindate'] ?? 
+                   booking['checkindatetime'] ?? 
+                   booking['check_in_date'] ?? 
+                   'N/A';
+    final checkOut = booking['checkoutdate'] ?? 
+                    booking['checkoutdatetime'] ?? 
+                    booking['check_out_date'] ?? 
+                    'N/A';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE7F0FF),
+        title: Text(
+          'Booking Details',
+          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Customer', customerName.toString()),
+            _buildDetailRow('Property', propertyName.toString()),
+            _buildDetailRow('Check-in', checkIn.toString()),
+            _buildDetailRow('Check-out', checkOut.toString()),
+            _buildDetailRow('Price', priceStr),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleBookingDecision(booking, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Accept'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleBookingDecision(booking, false);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reject'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.black),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleBookingDecision(
+      Map<String, dynamic> booking, bool approve) async {
+    if (_isProcessingBooking) return;
+    final reservationId = booking['reservationid'];
+    if (reservationId == null) return;
+
+    final confirmed = await _showBookingConfirmationDialog(
+      title: approve ? 'Approve Booking' : 'Reject Booking',
+      message: approve
+          ? 'Approve booking request for ${booking['property']}?'
+          : 'Reject booking request for ${booking['property']}?',
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isProcessingBooking = true);
+    try {
+      final newStatus = approve ? 'Accepted' : 'Rejected';
+      await api.updateReservationStatus(reservationId, newStatus);
+      if (approve) {
+        try {
+          await api.acceptBooking(reservationId);
+        } catch (notifyError) {
+          print('AdminDashboard: booking approval notification failed: $notifyError');
+        }
+      }
+
+      if (mounted) {
+        await _loadPendingBookings();
+        await _loadDashboardStats();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approve
+                  ? 'Booking approved successfully'
+                  : 'Booking rejected successfully',
+            ),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approve
+                  ? 'Failed to approve booking: $error'
+                  : 'Failed to reject booking: $error',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingBooking = false);
+      }
+    }
+  }
+
+  Future<bool?> _showBookingConfirmationDialog({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077B6),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _formatBookingDateRange(dynamic start, dynamic end) {
+    try {
+      if (start == null || end == null) return null;
+      final startDate = DateTime.parse(start.toString());
+      final endDate = DateTime.parse(end.toString());
+      final formatter = DateFormat('dd MMM');
+      return '${formatter.format(startDate)} - ${formatter.format(endDate)}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatPrice(double? price) {
+    final value = price ?? 0.0;
+    return 'RM ${value.toStringAsFixed(2)}';
   }
 
   Widget _buildDrawer() { /* unchanged */ return Drawer(
@@ -1134,3 +1591,4 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
 
 }
+
