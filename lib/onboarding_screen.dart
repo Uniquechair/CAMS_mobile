@@ -14,28 +14,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  // Colors
-  final Color primaryBlue = const Color(0xFF4188FF);
-  final Color titleBrown = const Color(0xFF4A3426);
-  final Color descBrown = const Color(0xFF6E5B4B);
-
   // animation states
   double _fadeOpacity = 1.0;
   Offset _slideOffset = Offset.zero;
 
+  final Color descColor = const Color(0xFF6E5B4B);
+
   final List<Map<String, dynamic>> _pages = [
     {
-      'title': 'Hello Sarawak!',
+      'title': 'Hello, \nSarawak!',
       'description': 'Explore stays across the land of the hornbills.',
       'image': 'assets/ob1.png',
     },
     {
-      'title': 'Stay Connected',
+      'title': 'Stay\nConnected',
       'description': 'All your stays in one app.',
       'image': 'assets/ob2.png',
     },
     {
-      'title': 'Ready to Begin?',
+      'title': 'Ready to\nBegin?',
       'description': 'Start your journey with us.',
       'image': 'assets/ob3.png',
     },
@@ -44,7 +41,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    // Run initial fade/slide animation
     WidgetsBinding.instance.addPostFrameCallback((_) => _runFadeAnimation());
   }
 
@@ -55,7 +51,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _runFadeAnimation() async {
-    // Start from slightly down + transparent
     setState(() {
       _fadeOpacity = 0;
       _slideOffset = const Offset(0, 0.03);
@@ -88,11 +83,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  // Gradient title using Seymour One + Figma colours
+  Widget _buildGradientTitle(String text) {
+    return ShaderMask(
+      shaderCallback: (bounds) {
+        return const LinearGradient(
+          colors: [
+            Color(0xFFFF9F1C), // 0%
+            Color(0xFFF88449), // 50%
+            Color(0xFFFFBF68), // 100%
+          ],
+        ).createShader(
+          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+        );
+      },
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.seymourOne(
+          fontSize: 29,
+          height: 1.1,
+          color: Colors.white, // replaced by shader
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // global background
-      backgroundColor: const Color(0xFFFEF8E4),
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -108,62 +128,121 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemBuilder: (context, index) {
                   final page = _pages[index];
 
-                  return Container(
-                    width: double.infinity,
-                    color: const Color(0xFFFEF8E4),
-                    child: AnimatedSlide(
-                      offset: _slideOffset,
+                  return AnimatedSlide(
+                    offset: _slideOffset,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOut,
+                    child: AnimatedOpacity(
+                      opacity: _fadeOpacity,
                       duration: const Duration(milliseconds: 400),
                       curve: Curves.easeOut,
-                      child: AnimatedOpacity(
-                        opacity: _fadeOpacity,
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeOut,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // IMAGE CENTER
-                            Expanded(
-                              child: Center(
-                                child: Image.asset(
-                                  page['image'],
-                                  fit: BoxFit.contain,
-                                  width: MediaQuery.of(context).size.width * 0.83,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // header size
+                          final headerHeight = constraints.maxHeight * 0.55;
+
+                          // tweak overlap + spacing for last page (characters are taller)
+                          final bool isLast = index == 2;
+                          final double overlapFactor =
+                              isLast ? 0.12 : 0.15; // smaller = further up
+                          final double spacerFactor =
+                              isLast ? 0.10 : 0.08; // more gap below image
+
+                          return Column(
+                            children: [
+                              const SizedBox(height: 8),
+
+                              // 🔶 TOP: wave + image (with overlap)
+                              SizedBox(
+                                height: headerHeight,
+                                width: double.infinity,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    ClipPath(
+                                      clipper: BottomWaveClipper(),
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.topRight,
+                                            colors: [
+                                              Color(0xFFFF9F1C), // 0%
+                                              Color(0xFFF88449), // 50%
+                                              Color(0xFFFFBF68), // 100%
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Image sitting slightly out of the curve
+                                    Positioned(
+                                      bottom:
+                                          -constraints.maxHeight * overlapFactor,
+                                      left: 0,
+                                      right: 0,
+                                      child: Center(
+                                        child: Image.asset(
+                                          page['image'],
+                                          width: constraints.maxWidth * 0.55,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
 
-                            // BOTTOM-LEFT TEXT
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    page['title'],
-                                    style: GoogleFonts.seymourOne(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w400, // Seymour One has single weight
-                                      height: 1.1,
-                                      color: titleBrown,
-                                    ),
+                              // space to account for the image overlap
+                              SizedBox(
+                                  height:
+                                      constraints.maxHeight * spacerFactor),
+
+                              // 🔶 Title, description, dots (middle area)
+                              _buildGradientTitle(page['title']),
+                              const SizedBox(height: 10),
+
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 32),
+                                child: Text(
+                                  page['description'],
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14.5,
+                                    height: 1.4,
+                                    color: descColor,
                                   ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    page['description'],
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: descBrown,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
 
-                            const SizedBox(height: 32),
-                          ],
-                        ),
+                              const SizedBox(height: 90),
+
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(_pages.length, (i) {
+                                  final active = i == _currentPage;
+                                  return AnimatedContainer(
+                                    duration:
+                                        const Duration(milliseconds: 250),
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 4),
+                                    height: 8,
+                                    width: active ? 22 : 8,
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? const Color(0xFFDF6A1F)
+                                          : const Color(0xFFFFD6A6),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                  );
+                                }),
+                              ),
+
+                              const Spacer(),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   );
@@ -171,79 +250,73 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
 
-            // ----------------- DOT INDICATORS -----------------------
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_pages.length, (i) {
-                final active = i == _currentPage;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-                  height: 8,
-                  width: active ? 26 : 8,
-                  decoration: BoxDecoration(
-                    color: active ? titleBrown : Colors.brown.shade200,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                );
-              }),
-            ),
-
-            // ----------------- GLASSY GRADIENT BUTTON -----------------------
+            // ----------------- BOTTOM: SKIP + BUTTON -----------------------
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(26),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(26),
-                      gradient: LinearGradient(
-                        colors: [
-                          primaryBlue.withOpacity(0.90),
-                          const Color(0xFF74A9FF).withOpacity(0.95),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // SKIP (grey, left)
+                  TextButton(
+                    onPressed: _finishOnboarding,
+                    child: const Text(
+                      'SKIP',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
                       ),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.5),
-                        width: 1.3,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: primaryBlue.withOpacity(0.35),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
                     ),
-                    child: SizedBox(
-                      height: 54,
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _nextPage,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(26),
+                  ),
+
+                  // Gradient NEXT / GET STARTED button
+                  SizedBox(
+                    height: 50,
+                    width: 130,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(26),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0xFFFFBF68), // 0%
+                              Color(0xFFFF9F1C), // 100%
+                            ],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x33FF9F1C),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          _currentPage == _pages.length - 1 ? 'Get Started' : 'Next',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        child: ElevatedButton(
+                          onPressed: _nextPage,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                          ),
+                          child: Text(
+                            _currentPage == _pages.length - 1
+                                ? 'GET STARTED'
+                                : 'NEXT',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
@@ -251,4 +324,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
     );
   }
+}
+
+/// Creates a smooth “wave” similar to the Figma yellow curve.
+class BottomWaveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 60);
+
+    path.quadraticBezierTo(
+      size.width / 2,
+      size.height,
+      size.width,
+      size.height - 60,
+    );
+
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
