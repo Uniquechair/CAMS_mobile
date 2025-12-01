@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'shared_admin_moderator/manage_booking.dart';  // 👈 adjust if folder name different
+import 'owner/owner_property_listing.dart';  
 
 void main() {
   runApp(const CamsApp());
@@ -16,7 +16,7 @@ class CamsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const AdminManageBooking(),  // opens Manage Booking directly
+      home: const OwnerPropertyListingPage(),  
     );
   }
 }
