@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-// import 'onboarding_screen.dart';  // <-- add this import
-import 'profile_page.dart';  
+import 'shared_admin_moderator/manage_booking.dart';  // 👈 adjust if folder name different
 
 void main() {
   runApp(const CamsApp());
@@ -17,7 +16,7 @@ class CamsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const ProfilePage(),   // <-- open this page directly
+      home: const AdminManageBooking(),  // opens Manage Booking directly
     );
   }
 }
