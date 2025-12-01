@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // for HapticFeedback
 import 'package:google_fonts/google_fonts.dart';
 import '../services/session.dart';
 
@@ -10,13 +11,18 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends State<OnboardingScreen>
+    with SingleTickerProviderStateMixin {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
   // animation states
-  double _fadeOpacity = 1.0;
+  double _fadeOpacity = 1.0; // used for text fade
   Offset _slideOffset = Offset.zero;
+
+  // floating animation for image
+  late final AnimationController _floatController;
+  late final Animation<Offset> _floatAnimation;
 
   final Color descColor = const Color(0xFF6E5B4B);
 
@@ -41,26 +47,44 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
+
+    // floating/breathing animation for image
+    _floatController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
+    _floatAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.01),
+      end: const Offset(0, -0.01),
+    ).animate(
+      CurvedAnimation(
+        parent: _floatController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) => _runFadeAnimation());
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _floatController.dispose();
     super.dispose();
   }
 
   Future<void> _runFadeAnimation() async {
     setState(() {
-      _fadeOpacity = 0;
-      _slideOffset = const Offset(0, 0.03);
+      _fadeOpacity = 0; // text fade out
+      _slideOffset = const Offset(0, 0.03); // slight slide down
     });
 
     await Future.delayed(const Duration(milliseconds: 20));
     if (!mounted) return;
 
     setState(() {
-      _fadeOpacity = 1;
+      _fadeOpacity = 1; // text fade in
       _slideOffset = Offset.zero;
     });
   }
@@ -123,6 +147,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemCount: _pages.length,
                 onPageChanged: (index) {
                   setState(() => _currentPage = index);
+                  HapticFeedback.lightImpact(); // tiny vibration
                   _runFadeAnimation();
                 },
                 itemBuilder: (context, index) {
@@ -132,55 +157,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     offset: _slideOffset,
                     duration: const Duration(milliseconds: 400),
                     curve: Curves.easeOut,
-                    child: AnimatedOpacity(
-                      opacity: _fadeOpacity,
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeOut,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // header size
-                          final headerHeight = constraints.maxHeight * 0.55;
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final headerHeight = constraints.maxHeight * 0.5;
 
-                          // tweak overlap + spacing for last page (characters are taller)
-                          final bool isLast = index == 2;
-                          final double overlapFactor =
-                              isLast ? 0.12 : 0.15; // smaller = further up
-                          final double spacerFactor =
-                              isLast ? 0.10 : 0.08; // more gap below image
+                        // tweak overlap + spacing for last page (characters taller)
+                        final bool isLast = index == 2;
+                        final double overlapFactor =
+                            isLast ? 0.10 : 0.12; // smaller = sits higher
+                        final double spacerFactor =
+                            isLast ? 0.10 : 0.08; // space below image
 
-                          return Column(
-                            children: [
-                              const SizedBox(height: 8),
+                        return Column(
+                          children: [
+                            const SizedBox(height: 8),
 
-                              // 🔶 TOP: wave + image (with overlap)
-                              SizedBox(
-                                height: headerHeight,
-                                width: double.infinity,
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    ClipPath(
-                                      clipper: BottomWaveClipper(),
-                                      child: Container(
-                                        decoration: const BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.topRight,
-                                            colors: [
-                                              Color(0xFFFF9F1C), // 0%
-                                              Color(0xFFF88449), // 50%
-                                              Color(0xFFFFBF68), // 100%
-                                            ],
-                                          ),
+                            // 🔶 TOP: soft orange gradient + floating image
+                            SizedBox(
+                              height: headerHeight,
+                              width: double.infinity,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  // gradient background with gentle wave bottom
+                                  ClipPath(
+                                    clipper: BottomWaveClipper(),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Color(0xFFFFEED6), 
+                                            Color(0xFFFFBF68), 
+                                            Color(0xFFFF9F1C),
+                                          ],
                                         ),
                                       ),
                                     ),
-                                    // Image sitting slightly out of the curve
-                                    Positioned(
-                                      bottom:
-                                          -constraints.maxHeight * overlapFactor,
-                                      left: 0,
-                                      right: 0,
+                                  ),
+
+                                  // floating illustration overlapping the wave
+                                  Positioned(
+                                    bottom:
+                                        -constraints.maxHeight * overlapFactor,
+                                    left: 0,
+                                    right: 0,
+                                    child: SlideTransition(
+                                      position: _floatAnimation,
                                       child: Center(
                                         child: Image.asset(
                                           page['image'],
@@ -189,61 +213,77 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-
-                              // space to account for the image overlap
-                              SizedBox(
-                                  height:
-                                      constraints.maxHeight * spacerFactor),
-
-                              // 🔶 Title, description, dots (middle area)
-                              _buildGradientTitle(page['title']),
-                              const SizedBox(height: 10),
-
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 32),
-                                child: Text(
-                                  page['description'],
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 14.5,
-                                    height: 1.4,
-                                    color: descColor,
                                   ),
-                                ),
+                                ],
                               ),
+                            ),
 
-                              const SizedBox(height: 90),
+                            // space to account for the image overlap
+                            SizedBox(
+                              height: constraints.maxHeight * spacerFactor,
+                            ),
 
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(_pages.length, (i) {
-                                  final active = i == _currentPage;
-                                  return AnimatedContainer(
-                                    duration:
-                                        const Duration(milliseconds: 250),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    height: 8,
-                                    width: active ? 22 : 8,
-                                    decoration: BoxDecoration(
-                                      color: active
-                                          ? const Color(0xFFDF6A1F)
-                                          : const Color(0xFFFFD6A6),
-                                      borderRadius: BorderRadius.circular(20),
+                            // 🔶 Title, description, dots (soft fade-in)
+                            AnimatedOpacity(
+                              opacity: _fadeOpacity,
+                              duration:
+                                  const Duration(milliseconds: 400),
+                              curve: Curves.easeOut,
+                              child: Column(
+                                children: [
+                                  _buildGradientTitle(page['title']),
+                                  const SizedBox(height: 10),
+
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 32,
                                     ),
-                                  );
-                                }),
-                              ),
+                                    child: Text(
+                                      page['description'],
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        height: 1.4,
+                                        color: descColor,
+                                      ),
+                                    ),
+                                  ),
 
-                              const Spacer(),
-                            ],
-                          );
-                        },
-                      ),
+                                  const SizedBox(height: 90),
+
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: List.generate(
+                                      _pages.length,
+                                      (i) {
+                                        final active = i == _currentPage;
+                                        return AnimatedContainer(
+                                          duration: const Duration(
+                                              milliseconds: 250),
+                                          margin: const EdgeInsets.symmetric(
+                                              horizontal: 4),
+                                          height: 8,
+                                          width: active ? 22 : 8,
+                                          decoration: BoxDecoration(
+                                            color: active
+                                                ? const Color(0xFFDF6A1F)
+                                                : const Color(0xFFFFD6A6),
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const Spacer(),
+                          ],
+                        );
+                      },
                     ),
                   );
                 },
@@ -271,7 +311,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   // Gradient NEXT / GET STARTED button
                   SizedBox(
                     height: 50,
-                    width: 130,
+                    width: null,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(26),
                       child: Container(
@@ -326,13 +366,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-/// Creates a smooth “wave” similar to the Figma yellow curve.
+/// Simple bottom wave clipper so the gradient feels like a soft band
 class BottomWaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
     path.lineTo(0, size.height - 60);
 
+    // smooth curve across the bottom
     path.quadraticBezierTo(
       size.width / 2,
       size.height,
