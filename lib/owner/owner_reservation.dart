@@ -36,6 +36,9 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     "Expired",
   ];
 
+  // for expandable filters (same behaviour as property listing)
+  bool _filtersExpanded = true;
+
   @override
   void initState() {
     super.initState();
@@ -50,34 +53,37 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
 
     try {
       final reservationsData = await api.fetchReservation();
-      
+
       final List<Map<String, dynamic>> loadedReservations = [];
-      
+
       for (var reservation in reservationsData) {
-        final propertyName = reservation['propertyname'] ?? 
-                            reservation['propertyaddress'] ?? 
-                            reservation['property'] ?? 
-                            'Unknown Property';
-        final customerName = reservation['customername'] ?? 
-                            reservation['username'] ?? 
-                            reservation['name'] ?? 
-                            'Unknown Customer';
-        final statusRaw = (reservation['reservationstatus'] ?? 
-                          reservation['status'] ?? 
-                          'Pending').toString();
-        final price = _parseDouble(reservation['totalprice'] ?? 
-                                  reservation['price'] ?? 
-                                  reservation['amount']) ?? 0.0;
-        final checkIn = _formatDate(reservation['checkindatetime'] ?? 
-                                   reservation['checkin'] ?? 
-                                   reservation['checkIn']);
-        final checkOut = _formatDate(reservation['checkoutdatetime'] ?? 
-                                    reservation['checkout'] ?? 
-                                    reservation['checkOut']);
+        final propertyName = reservation['propertyname'] ??
+            reservation['propertyaddress'] ??
+            reservation['property'] ??
+            'Unknown Property';
+        final customerName = reservation['customername'] ??
+            reservation['username'] ??
+            reservation['name'] ??
+            'Unknown Customer';
+        final statusRaw = (reservation['reservationstatus'] ??
+                reservation['status'] ??
+                'Pending')
+            .toString();
+        final price = _parseDouble(
+                reservation['totalprice'] ??
+                    reservation['price'] ??
+                    reservation['amount']) ??
+            0.0;
+        final checkIn = _formatDate(reservation['checkindatetime'] ??
+            reservation['checkin'] ??
+            reservation['checkIn']);
+        final checkOut = _formatDate(reservation['checkoutdatetime'] ??
+            reservation['checkout'] ??
+            reservation['checkOut']);
         final reservationId = reservation['reservationid']?.toString() ?? '';
-        final images = reservation['propertyimage'] is List 
+        final images = reservation['propertyimage'] is List
             ? (reservation['propertyimage'] as List).cast<String>()
-            : (reservation['propertyimage'] is String 
+            : (reservation['propertyimage'] is String
                 ? (reservation['propertyimage'] as String).split(',')
                 : <String>[]);
 
@@ -91,8 +97,9 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
           'checkOut': checkOut,
           'images': images.isNotEmpty ? images : [],
           'propertyid': reservation['propertyid']?.toString() ?? '',
-          'customerid': reservation['customerid']?.toString() ?? 
-                       reservation['userid']?.toString() ?? '',
+          'customerid': reservation['customerid']?.toString() ??
+              reservation['userid']?.toString() ??
+              '',
         });
       }
 
@@ -127,7 +134,6 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     if (dateValue == null) return 'N/A';
     try {
       if (dateValue is String) {
-        // Try parsing the date string
         final date = DateTime.parse(dateValue);
         return '${date.day}/${date.month}/${date.year}';
       }
@@ -147,7 +153,8 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
       return 'Rejected';
     } else if (statusLower.contains('cancel')) {
       return 'Canceled';
-    } else if (statusLower.contains('paid') || statusLower.contains('complete')) {
+    } else if (statusLower.contains('paid') ||
+        statusLower.contains('complete')) {
       return 'Paid';
     } else if (statusLower.contains('expire')) {
       return 'Expired';
@@ -158,7 +165,8 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
   List<Map<String, dynamic>> get _filteredReservations {
     return _reservations.where((res) {
       final statusMatch = _selectedStatus == "All Statuses" ||
-          res["status"].toString().toLowerCase() == _selectedStatus.toLowerCase();
+          res["status"].toString().toLowerCase() ==
+              _selectedStatus.toLowerCase();
 
       final query = _searchController.text.toLowerCase();
       final searchMatch = query.isEmpty ||
@@ -189,318 +197,20 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     }
   }
 
+  // ===================== BUILD =====================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-
       endDrawer: MoreMenuDrawer(
         role: UserRole.owner,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
         currentPageLabel: 'Bookings',
       ),
-
       backgroundColor: const Color(0xFFFBFCFE),
-
-      body: Column(
-        children: [
-          // -----------------------------------
-          // PREMIUM HEADER (updated padding)
-          // -----------------------------------
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 65, 16, 60),
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [brandBlue, const Color(0xFF2E5BC4)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(28),
-                bottomRight: Radius.circular(28),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: brandBlue.withOpacity(0.2),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                )
-              ],
-            ),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child:
-                        const Icon(Icons.menu, color: Colors.white, size: 24),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Reservations",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        "Manage bookings",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // -----------------------------------
-          // FLOATING SEARCH BAR
-          // -----------------------------------
-          Transform.translate(
-            offset: const Offset(0, -24),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search,
-                          color: Colors.grey.shade400, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            hintText: 'Search reservations...',
-                            hintStyle: TextStyle(
-                                color: Colors.grey.shade400, fontSize: 15),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          style: const TextStyle(fontSize: 15),
-                        ),
-                      ),
-                      Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: brandBlue,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: TextButton(
-                          onPressed: () => setState(() {}),
-                          style:
-                              TextButton.styleFrom(padding: EdgeInsets.zero),
-                          child: const Text('Search',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14)),
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // -----------------------------------
-          // FILTER SECTION
-          // -----------------------------------
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Filter',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.grey.shade800)),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.grey.shade200),
-                            color: Colors.grey.shade50,
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _selectedStatus,
-                              items: _statusOptions
-                                  .map((e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(e,
-                                          style:
-                                              const TextStyle(fontSize: 14))))
-                                  .toList(),
-                              onChanged: (v) =>
-                                  setState(() => _selectedStatus = v!),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: brandBlue,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => setState(() {}),
-                            borderRadius: BorderRadius.circular(14),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 11),
-                              child: Text('Apply',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // -----------------------------------
-          // RESULTS LIST
-          // -----------------------------------
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF4188FF),
-                    ),
-                  )
-                : _errorMessage != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error_outline,
-                                size: 56, color: Colors.red.shade300),
-                            const SizedBox(height: 12),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 32),
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  color: Colors.red.shade700,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadData,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: brandBlue,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Retry'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _filteredReservations.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.inbox,
-                                    size: 56, color: Colors.grey.shade300),
-                                const SizedBox(height: 12),
-                                Text(
-                                  "No reservations found",
-                                  style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _loadData,
-                            color: brandBlue,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: _filteredReservations.length,
-                              itemBuilder: (context, index) {
-                                final res = _filteredReservations[index];
-                                return _buildPremiumCard(res);
-                              },
-                            ),
-                          ),
-          ),
-        ],
-      ),
-
-      // -----------------------------------
-      // BOTTOM NAVIGATION BAR
-      // -----------------------------------
+      body: _buildBody(),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: 2,
         role: UserRole.owner,
@@ -510,12 +220,394 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     );
   }
 
-  // -----------------------------------
-  // PREMIUM CARD
-  // -----------------------------------
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF4188FF),
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      color: brandBlue,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // HEADER + FLOATING SEARCH (same pattern as property listing)
+          SliverToBoxAdapter(child: _buildHeaderWithSearch()),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+
+          // EXPANDABLE FILTER CARD
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildFilterCard(),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+
+          // LIST OR EMPTY
+          _filteredReservations.isEmpty
+              ? SliverToBoxAdapter(child: _buildEmptyState())
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final res = _filteredReservations[index];
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: _buildPremiumCard(res),
+                      );
+                    },
+                    childCount: _filteredReservations.length,
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+
+  // ===================== HEADER / SEARCH / FILTER =====================
+
+  Widget _buildHeaderWithSearch() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _buildHeader(),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: -26,
+          child: _buildSearchBar(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 65, 16, 60),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [brandBlue, const Color(0xFF2E5BC4)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: brandBlue.withOpacity(0.2),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.menu, color: Colors.white, size: 24),
+            ),
+          ),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "Reservations",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  "Manage bookings",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 56,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.search, color: Colors.grey.shade400, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search reservations...',
+                  hintStyle:
+                      TextStyle(color: Colors.grey.shade400, fontSize: 15),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+            Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: brandBlue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TextButton(
+                onPressed: () => setState(() {}),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                child: const Text(
+                  'Search',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterCard() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // header row with expand/collapse
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              setState(() {
+                _filtersExpanded = !_filtersExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.tune,
+                    size: 18,
+                    color: Colors.grey.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Status & Filters',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    _filtersExpanded ? 'Hide' : 'Show',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _filtersExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.grey.shade600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          if (_filtersExpanded) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.grey.shade200),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedStatus,
+                        items: _statusOptions
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedStatus = v ?? "All Statuses"),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: brandBlue,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => setState(() {}),
+                      borderRadius: BorderRadius.circular(14),
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                        child: Text(
+                          'Apply Filters',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ===================== STATES (EMPTY / ERROR) =====================
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 40),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(Icons.inbox, size: 56, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text(
+              "No reservations found",
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 56, color: Colors.red.shade300),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Something went wrong',
+              style: TextStyle(
+                color: Colors.red.shade700,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandBlue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===================== CARD =====================
+
   Widget _buildPremiumCard(Map<String, dynamic> res) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -529,32 +621,29 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
       ),
       child: Column(
         children: [
-          // top accent bar
           Container(
             height: 5,
             decoration: BoxDecoration(
               gradient:
                   LinearGradient(colors: [brandBlue, const Color(0xFF2E5BC4)]),
               borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18)),
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+              ),
             ),
           ),
-
-          // card contents
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image + info row
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: res["images"] != null && 
-                             (res["images"] as List).isNotEmpty
+                      child: res["images"] != null &&
+                              (res["images"] as List).isNotEmpty
                           ? Image.network(
                               'data:image/jpeg;base64,${(res["images"] as List)[0]}',
                               height: 100,
@@ -568,14 +657,16 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                                 child: const Icon(Icons.broken_image,
                                     size: 40, color: Colors.grey),
                               ),
-                              loadingBuilder: (context, child, loadingProgress) {
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
                                 if (loadingProgress == null) return child;
                                 return Container(
                                   height: 100,
                                   width: 120,
                                   color: Colors.grey.shade200,
                                   child: const Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child:
+                                        CircularProgressIndicator(strokeWidth: 2),
                                   ),
                                 );
                               },
@@ -592,42 +683,45 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                             ),
                     ),
                     const SizedBox(width: 14),
-
-                    // TEXT PART
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(res["property"],
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.2)),
+                          Text(
+                            res["property"],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text(res["name"],
-                              style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
+                          Text(
+                            res["name"],
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                           const SizedBox(height: 10),
-                          Text('RM ${res["price"]?.toStringAsFixed(2) ?? "0.00"}',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: brandBlue,
-                                  fontSize: 16)),
+                          Text(
+                            'RM ${res["price"]?.toStringAsFixed(2) ?? "0.00"}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: brandBlue,
+                              fontSize: 16,
+                            ),
+                          ),
                         ],
                       ),
                     )
                   ],
                 ),
-
                 const SizedBox(height: 16),
-
-                // Dates + status row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Dates
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,8 +731,6 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                         ],
                       ),
                     ),
-
-                    // Status + menu
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -646,16 +738,16 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                           padding: const EdgeInsets.symmetric(
                               vertical: 7, horizontal: 14),
                           decoration: BoxDecoration(
-                            color: _statusColor(res["status"])
-                                .withOpacity(0.15),
+                            color: _statusColor(res["status"]).withOpacity(0.15),
                             borderRadius: BorderRadius.circular(22),
                           ),
                           child: Text(
                             res['status'],
                             style: TextStyle(
-                                color: _statusColor(res["status"]),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12),
+                              color: _statusColor(res["status"]),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -671,7 +763,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
                 )
               ],
             ),
-          )
+          ),
         ],
       ),
     );
@@ -692,9 +784,9 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFE7F0FF),
-        title: Text(
+        title: const Text(
           'Reservation Details',
-          style: const TextStyle(color: Colors.black),
+          style: TextStyle(color: Colors.black),
         ),
         content: SingleChildScrollView(
           child: Column(
@@ -709,7 +801,9 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
               _buildDetailRow('Check-Out', res['checkOut'] ?? 'N/A'),
               _buildDetailRow(
                 'Total Price',
-                res['price'] != null ? 'RM ${res['price']?.toStringAsFixed(2)}' : 'N/A',
+                res['price'] != null
+                    ? 'RM ${res['price']?.toStringAsFixed(2)}'
+                    : 'N/A',
               ),
             ],
           ),
@@ -725,7 +819,8 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
   }
 
   Widget _buildDetailRow(String label, dynamic value) {
-    final displayValue = value == null || value.toString().trim().isEmpty ? 'N/A' : value.toString();
+    final displayValue =
+        value == null || value.toString().trim().isEmpty ? 'N/A' : value.toString();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -748,27 +843,25 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     );
   }
 
+  // ===================== NAV & MENU =====================
+
   void _handleBottomNavTap(int index) {
     if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
+      return; // more button handled by bottom bar
     }
     if (index == 0) {
-      // Dashboard
       Navigator.of(context).pushReplacementNamed('/owner');
       return;
     }
     if (index == 1) {
-      // Properties
       Navigator.of(context).pushReplacementNamed('/owner-property-listing');
       return;
     }
     if (index == 2) {
-      // Bookings/Reservations - already on this page
+      // already here
       return;
     }
     if (index == 3) {
-      // Profile
       Navigator.pushNamed(context, '/profile');
       return;
     }
@@ -789,8 +882,7 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
       return;
     }
     if (label == 'Reservation' || label == 'Bookings') {
-      // Already on reservation page
-      return;
+      return; // already here
     }
     if (label == 'Customer') {
       Navigator.of(context).pushNamed('/owner-manage-customer');
@@ -802,7 +894,8 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
+        content: Text('Navigating to $label',
+            style: const TextStyle(color: Colors.black)),
         backgroundColor: const Color(0xFF468FAF),
         duration: const Duration(seconds: 1),
       ),
@@ -810,13 +903,13 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
   }
 
   Future<void> _handleLogout() async {
-    // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFE7F0FF),
         title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?',
+            style: TextStyle(color: Colors.black)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -837,7 +930,8 @@ class _OwnerReservationPageState extends State<OwnerReservationPage> {
     if (confirmed == true) {
       await Session.clear();
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(
+            context, '/before-login', (route) => false);
       }
     }
   }
