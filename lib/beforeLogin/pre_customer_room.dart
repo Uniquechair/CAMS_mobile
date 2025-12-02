@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../api.dart' as api;
+import 'dart:convert';
+import 'dart:typed_data';
 import 'pre_customer_cart.dart';
 import 'pre_customer_booking.dart';
 
@@ -7,6 +10,7 @@ class Property {
   final String name;
   final String location;
   final List<String> imageUrls;
+  final List<Uint8List?> imageBytes;
   final double rating;
   final int reviews;
   final int bedrooms;
@@ -20,6 +24,7 @@ class Property {
     required this.name,
     required this.location,
     required this.imageUrls,
+    required this.imageBytes,
     required this.rating,
     required this.reviews,
     required this.bedrooms,
@@ -30,111 +35,6 @@ class Property {
   });
 }
 
-final List<Property> hardcodedProperties = [
-  // TODO: Replace with real data from backend
-  Property(
-    id: '1',
-    name: 'Seaside Villa',
-    location: 'Miami Beach, FL',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800',
-      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-      'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
-    ],
-    rating: 4.6,
-    reviews: 124,
-    bedrooms: 3,
-    guests: 6,
-    pricePerNight: 250,
-    amenities: ['WiFi', 'Parking', 'Pool'],
-    description:
-        'Beautiful seaside villa with stunning ocean views and private pool.',
-  ),
-  Property(
-    id: '2',
-    name: 'Mountain Cabin',
-    location: 'Aspen, CO',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1542718610-a1d656d1884c?w=800',
-      'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800',
-    ],
-    rating: 4.8,
-    reviews: 89,
-    bedrooms: 2,
-    guests: 4,
-    pricePerNight: 180,
-    amenities: ['WiFi', 'Parking', 'Fireplace'],
-    description:
-        'Cozy mountain cabin perfect for a peaceful retreat in nature.',
-  ),
-  Property(
-    id: '3',
-    name: 'City Apartment',
-    location: 'New York, NY',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800',
-      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800',
-    ],
-    rating: 4.5,
-    reviews: 156,
-    bedrooms: 1,
-    guests: 2,
-    pricePerNight: 150,
-    amenities: ['WiFi', 'Gym', 'Parking'],
-    description:
-        'Modern apartment in the heart of the city with easy access to attractions.',
-  ),
-  Property(
-    id: '4',
-    name: 'Beach House',
-    location: 'Malibu, CA',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=800',
-      'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800',
-    ],
-    rating: 4.9,
-    reviews: 201,
-    bedrooms: 4,
-    guests: 8,
-    pricePerNight: 350,
-    amenities: ['WiFi', 'Parking', 'Pool', 'Beach Access'],
-    description:
-        'Luxurious beach house with direct beach access and modern amenities.',
-  ),
-  Property(
-    id: '5',
-    name: 'Lake Cottage',
-    location: 'Lake Tahoe, CA',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1449158743715-0a90ebb6d2d8?w=800',
-    ],
-    rating: 4.7,
-    reviews: 78,
-    bedrooms: 2,
-    guests: 4,
-    pricePerNight: 200,
-    amenities: ['WiFi', 'Parking', 'Lake View'],
-    description:
-        'Charming cottage with beautiful lake views and peaceful surroundings.',
-  ),
-  Property(
-    id: '6',
-    name: 'Desert Retreat',
-    location: 'Scottsdale, AZ',
-    imageUrls: [
-      'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800',
-    ],
-    rating: 4.4,
-    reviews: 92,
-    bedrooms: 3,
-    guests: 6,
-    pricePerNight: 220,
-    amenities: ['WiFi', 'Parking', 'Pool', 'Hot Tub'],
-    description:
-        'Stunning desert retreat with panoramic views and luxury amenities.',
-  ),
-];
-
 class CustomerRoomsNotLogin extends StatefulWidget {
   const CustomerRoomsNotLogin({super.key});
 
@@ -144,7 +44,11 @@ class CustomerRoomsNotLogin extends StatefulWidget {
 
 class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   int _selectedIndex = 0;
-  List<Property> filteredProperties = hardcodedProperties;
+
+  List<Property> allProperties = [];
+  List<Property> filteredProperties = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
   String? selectedLocation;
   DateTimeRange? selectedDateRange;
@@ -156,9 +60,130 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   String _searchQuery = '';
 
   @override
+  void initState() {
+    super.initState();
+    _loadProperties();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadProperties() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final dynamic data = await api.fetchProduct();
+
+      List<dynamic> rawList = [];
+      if (data is List) {
+        rawList = data;
+      } else if (data is Map<String, dynamic>) {
+        if (data['products'] is List) {
+          rawList = data['products'] as List<dynamic>;
+        } else if (data['properties'] is List) {
+          rawList = data['properties'] as List<dynamic>;
+        } else if (data['product'] is List) {
+          rawList = data['product'] as List<dynamic>;
+        } else if (data['data'] is List) {
+          rawList = data['data'] as List<dynamic>;
+        }
+      }
+
+      final List<Property> loaded = [];
+
+      for (final item in rawList) {
+        if (item is! Map<String, dynamic>) continue;
+        final m = item;
+
+        final id = (m['propertyid'] ?? m['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+
+        final name =
+            (m['propertyaddress'] ?? m['name'] ?? 'Property').toString();
+        final location =
+            (m['nearbylocation'] ?? m['location'] ?? 'Unknown Location')
+                .toString();
+
+        // Images (base64 or URLs)
+        final List<String> imageUrls = [];
+        final List<Uint8List?> imageBytes = [];
+        final rawImages = m['propertyimage'] ?? m['images'] ?? m['image'];
+
+        if (rawImages is List) {
+          for (final img in rawImages) {
+            if (img == null) continue;
+            final s = img.toString();
+            if (s.isEmpty) continue;
+            try {
+              final bytes = base64Decode(s);
+              imageUrls.add('base64');
+              imageBytes.add(bytes);
+            } catch (_) {
+              imageUrls.add(s);
+              imageBytes.add(null);
+            }
+          }
+        } else if (rawImages is String && rawImages.isNotEmpty) {
+          try {
+            final bytes = base64Decode(rawImages);
+            imageUrls.add('base64');
+            imageBytes.add(bytes);
+          } catch (_) {
+            imageUrls.add(rawImages);
+            imageBytes.add(null);
+          }
+        }
+
+        if (imageUrls.isEmpty) {
+          imageUrls.add('https://via.placeholder.com/800x600?text=No+Image');
+          imageBytes.add(null);
+        }
+
+        loaded.add(
+          Property(
+            id: id,
+            name: name,
+            location: location,
+            imageUrls: imageUrls,
+            imageBytes: imageBytes,
+            rating: 4.5,
+            reviews: 0,
+            bedrooms:
+                int.tryParse(m['propertybedtype']?.toString() ?? '1') ?? 1,
+            guests:
+                int.tryParse(m['propertyguestpaxno']?.toString() ?? '2') ?? 2,
+            pricePerNight:
+                double.tryParse(m['normalrate']?.toString() ?? '0') ?? 0,
+            amenities: const ['WiFi', 'Parking'],
+            description: (m['propertydescription'] ?? m['description'] ??
+                    'No description available')
+                .toString(),
+          ),
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          allProperties = loaded;
+          filteredProperties = loaded;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('CustomerRoomsNotLogin: Error loading properties: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load properties. Please try again.';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _showFilterSheet() {
@@ -172,7 +197,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
 
   void _refilterProperties() {
     setState(() {
-      filteredProperties = hardcodedProperties.where((property) {
+      filteredProperties = allProperties.where((property) {
         final matchesPrice = property.pricePerNight >= priceRange.start &&
             property.pricePerNight <= priceRange.end;
 
@@ -307,40 +332,71 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
         children: [
           _buildSearchBar(),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await Future.delayed(const Duration(seconds: 1));
-              },
-              color: const Color(0xFF0077B6),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Available Properties',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E293B),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF0077B6),
+                    ),
+                  )
+                : _errorMessage != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                size: 60, color: Color(0xFF64748B)),
+                            const SizedBox(height: 16),
+                            Text(
+                              _errorMessage!,
+                              style:
+                                  const TextStyle(color: Color(0xFF64748B)),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _loadProperties,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0077B6),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadProperties,
+                        color: const Color(0xFF0077B6),
+                        child: ListView(
+                          padding: const EdgeInsets.all(16),
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Available Properties',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                                Text(
+                                  '${filteredProperties.length} properties found',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            ...filteredProperties
+                                .map((property) => _buildPropertyCard(property)),
+                          ],
                         ),
                       ),
-                      Text(
-                        '${filteredProperties.length} properties found',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ...filteredProperties
-                      .map((property) => _buildPropertyCard(property)),
-                ],
-              ),
-            ),
           ),
         ],
       ),
@@ -412,6 +468,36 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
     );
   }
 
+  Widget _buildPropertyImage(Property property, {double height = 200}) {
+    if (property.imageUrls.isNotEmpty &&
+        property.imageUrls[0] == 'base64' &&
+        property.imageBytes.isNotEmpty &&
+        property.imageBytes[0] != null) {
+      return Image.memory(
+        property.imageBytes[0]!,
+        width: double.infinity,
+        height: height,
+        fit: BoxFit.cover,
+      );
+    }
+
+    final url = property.imageUrls.isNotEmpty
+        ? property.imageUrls[0]
+        : 'https://via.placeholder.com/800x600?text=No+Image';
+
+    return Image.network(
+      url,
+      width: double.infinity,
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: const Color(0xFFE2E8F0),
+        child: const Icon(Icons.image,
+            size: 80, color: Color(0xFF94A3B8)),
+      ),
+    );
+  }
+
   Widget _buildPropertyCard(Property property) {
     return GestureDetector(
       onTap: () {
@@ -443,61 +529,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                   const BorderRadius.vertical(top: Radius.circular(16)),
               child: SizedBox(
                 height: 200,
-                child: property.imageUrls.length > 1
-                    ? PageView.builder(
-                        itemCount: property.imageUrls.length,
-                        itemBuilder: (context, index) {
-                          return Stack(
-                            children: [
-                              Image.network(
-                                property.imageUrls[index],
-                                width: double.infinity,
-                                height: 200,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(
-                                  color: const Color(0xFFE2E8F0),
-                                  child: const Icon(Icons.image,
-                                      size: 80, color: Color(0xFF94A3B8)),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 8,
-                                right: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        Colors.black.withValues(alpha: 0.6),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '${index + 1}/${property.imageUrls.length}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      )
-                    : Image.network(
-                        property.imageUrls[0],
-                        width: double.infinity,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(
-                          color: const Color(0xFFE2E8F0),
-                          child: const Icon(Icons.image,
-                              size: 80, color: Color(0xFF94A3B8)),
-                        ),
-                      ),
+                child: _buildPropertyImage(property),
               ),
             ),
             Padding(
@@ -611,6 +643,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                       ),
                       ElevatedButton(
                         onPressed: () {
+                          // IMPORTANT: keep behavior – show login required dialog
                           showDialog(
                             context: context,
                             builder: (context) => AlertDialog(
@@ -752,7 +785,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        initialValue: selectedLocation,
+                        value: selectedLocation,
                         decoration: InputDecoration(
                           hintText: 'Select location',
                           filled: true,
@@ -762,23 +795,22 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                             borderSide: BorderSide.none,
                           ),
                         ),
-                        items: [
-                          'Miami Beach',
-                          'Aspen',
-                          'New York',
-                          'Malibu',
-                          'Lake Tahoe',
-                          'Scottsdale'
-                        ]
-                            .map((location) => DropdownMenuItem(
-                                  value: location,
-                                  child: Text(location),
-                                ))
+                        items: allProperties
+                            .map((p) => p.location)
+                            .toSet()
+                            .toList()
+                            .map(
+                              (loc) => DropdownMenuItem(
+                                value: loc,
+                                child: Text(loc),
+                              ),
+                            )
                             .toList(),
                         onChanged: (value) {
                           setModalState(() {
                             selectedLocation = value;
                           });
+                          _refilterProperties();
                         },
                       ),
                       const SizedBox(height: 24),
@@ -804,8 +836,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                                 Row(
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons
-                                          .remove_circle_outline),
+                                      icon: const Icon(
+                                          Icons.remove_circle_outline),
                                       color: const Color(0xFF92BBFF),
                                       onPressed: () {
                                         if (adults > 1) {
@@ -843,8 +875,8 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                                 Row(
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons
-                                          .remove_circle_outline),
+                                      icon: const Icon(
+                                          Icons.remove_circle_outline),
                                       color: const Color(0xFF92BBFF),
                                       onPressed: () {
                                         if (children > 0) {
@@ -897,6 +929,7 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
                           setModalState(() {
                             priceRange = values;
                           });
+                          _refilterProperties();
                         },
                       ),
                       Text(
@@ -1043,6 +1076,32 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget buildImage({double height = 300}) {
+      if (property.imageUrls.isNotEmpty &&
+          property.imageUrls[0] == 'base64' &&
+          property.imageBytes.isNotEmpty &&
+          property.imageBytes[0] != null) {
+        return Image.memory(
+          property.imageBytes[0]!,
+          fit: BoxFit.cover,
+        );
+      }
+
+      final url = property.imageUrls.isNotEmpty
+          ? property.imageUrls[0]
+          : 'https://via.placeholder.com/800x600?text=No+Image';
+
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: const Color(0xFFE2E8F0),
+          child: const Icon(Icons.image,
+              size: 80, color: Color(0xFF94A3B8)),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
@@ -1064,32 +1123,7 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              background: property.imageUrls.length > 1
-                  ? PageView.builder(
-                      itemCount: property.imageUrls.length,
-                      itemBuilder: (context, index) {
-                        return Image.network(
-                          property.imageUrls[index],
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stackTrace) => Container(
-                            color: const Color(0xFFE2E8F0),
-                            child: const Icon(Icons.image,
-                                size: 80, color: Color(0xFF94A3B8)),
-                          ),
-                        );
-                      },
-                    )
-                  : Image.network(
-                      property.imageUrls[0],
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (context, error, stackTrace) => Container(
-                        color: const Color(0xFFE2E8F0),
-                        child: const Icon(Icons.image,
-                            size: 80, color: Color(0xFF94A3B8)),
-                      ),
-                    ),
+              background: buildImage(),
             ),
           ),
           SliverToBoxAdapter(
@@ -1278,3 +1312,5 @@ class PropertyDetailNotLoginPage extends StatelessWidget {
     );
   }
 }
+
+

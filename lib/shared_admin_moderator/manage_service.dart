@@ -48,11 +48,11 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
       _errorMessage = null;
     });
 
-    print('ManageService: Loading data...');
+    print('Property: Loading data...');
     
     final userid = await Session.getUserId();
     if (userid == null) {
-      print('ManageService: No userid found, keeping current data');
+      print('Property: No userid found, keeping current data');
       setState(() {
         _isLoading = false;
       });
@@ -61,18 +61,18 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
 
     // Try to fetch properties from API
     try {
-      print('ManageService: Fetching properties from API...');
+      print('Property: Fetching properties from API...');
       final propertiesData = await api.fetchPropertiesListingTable();
-      print('ManageService: Properties response: $propertiesData');
-      print('ManageService: Response type: ${propertiesData.runtimeType}');
-      print('ManageService: Response keys: ${propertiesData.keys.toList()}');
+      print('Property: Properties response: $propertiesData');
+      print('Property: Response type: ${propertiesData.runtimeType}');
+      print('Property: Response keys: ${propertiesData.keys.toList()}');
 
       if (mounted) {
         setState(() {
           // Clear only if we got successful response
           final previousCount = _properties.length;
           _properties.clear();
-          print('ManageService: Cleared $previousCount previous properties');
+          print('Property: Cleared $previousCount previous properties');
           
           // Extract properties array from response
           // The backend should return: { properties: [...] } or just [...]
@@ -82,14 +82,14 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
           for (var key in ['properties', 'data', 'result']) {
             if (propertiesData[key] != null && propertiesData[key] is List) {
               apiProperties = List<dynamic>.from(propertiesData[key]);
-              print('ManageService: Found ${apiProperties.length} properties in key "$key"');
+              print('Property: Found ${apiProperties.length} properties in key "$key"');
               break;
             }
           }
           
           // If still empty, check all keys for lists
           if (apiProperties.isEmpty) {
-            print('ManageService: No properties found in standard keys, checking all keys...');
+            print('Property: No properties found in standard keys, checking all keys...');
             propertiesData.forEach((key, value) {
               print('   Checking key "$key": ${value.runtimeType}');
               if (value is List && value.isNotEmpty) {
@@ -100,7 +100,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
           }
           
           if (apiProperties.isEmpty) {
-            print('ManageService: No properties found in response, full data structure:');
+            print('Property: No properties found in response, full data structure:');
             print('   Full response: $propertiesData');
             propertiesData.forEach((key, value) {
               print('   $key: ${value.runtimeType}');
@@ -115,10 +115,10 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
             });
           }
           
-          print('ManageService: Processing ${apiProperties.length} properties...');
+          print('Property: Processing ${apiProperties.length} properties...');
           
           for (var prop in apiProperties) {
-            print('ManageService: Processing property:');
+            print('Property: Processing property:');
             print('   propertyid: ${prop['propertyid']}');
             print('   propertyaddress: ${prop['propertyaddress']}');
             print('   propertydescription: ${prop['propertydescription']}');
@@ -145,7 +145,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
             final creatorName = prop['creatorusername'] ?? prop['username'] ?? 'Unknown';
             final bool isDisabled = statusLower.contains('disable') || statusLower.contains('inactive');
 
-            print('ManageService: Adding property - name: $propertyName, status: $statusRaw, creatorRole: $creatorRole');
+            print('Property: Adding property - name: $propertyName, status: $statusRaw, creatorRole: $creatorRole');
 
             _properties.add({
               'propertyid': prop['propertyid'],
@@ -163,15 +163,15 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
             });
           }
           
-          print('ManageService: Properties loaded: ${_properties.length} (was $previousCount before)');
-          print('ManageService: Final properties list:');
+          print('Property: Properties loaded: ${_properties.length} (was $previousCount before)');
+          print('Property: Final properties list:');
           for (var p in _properties) {
             print('   - ${p['name']} (ID: ${p['propertyid']}, Status: ${p['status']})');
           }
         });
       }
     } catch (error) {
-      print('ManageService: Error fetching properties: $error');
+      print('Property: Error fetching properties: $error');
       // Don't show error - just keep existing/hardcoded data
       if (mounted) {
         setState(() {
@@ -180,165 +180,14 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
       }
     }
 
-    // Try to fetch audit trails from API
-    try {
-      print('ManageService: Fetching audit trails from API...');
-      final auditData = await api.auditTrails(userid);
-      print('ManageService: Audit trails response type: ${auditData.runtimeType}');
-
-      if (mounted) {
-        setState(() {
-          _auditTrail.clear();
-          
-          if (auditData is List) {
-            print('ManageService: Processing ${auditData.length} audit logs...');
-            // Reverse the list so newest is at top
-            final reversedAuditData = auditData.reversed.toList();
-            for (var log in reversedAuditData) {
-              // Debug: Print the log structure to understand the API response
-              print('ManageService: Audit log entry: $log');
-              print('ManageService: Log keys: ${log.keys.toList()}');
-              
-              // Get details/description first to check for action keywords
-              String details = log['action'] ?? 
-                              log['details'] ?? 
-                              log['description'] ?? 
-                              log['message'] ?? 
-                              '';
-              
-              // Normalize action type to lowercase and handle various formats
-              String actionType = (log['actiontype'] ?? log['actionType'] ?? log['action'] ?? '').toString().toLowerCase();
-              
-              // Also check the details field for action keywords (e.g., "Create Reservation")
-              String detailsLower = details.toLowerCase();
-              
-              // Map various action type formats to standard ones (add, edit, delete, unknown)
-              // IMPORTANT: Check specific patterns first to avoid false matches
-              
-              // 1. Check for user activities that should be "unknown" (Login, Logout, Assign User Role)
-              // These should use default color, not edit color
-              if (detailsLower.contains('login') ||
-                  detailsLower.contains('logout') ||
-                  detailsLower.contains('assign user role') ||
-                  actionType.contains('login') ||
-                  actionType.contains('logout') ||
-                  actionType == 'login' ||
-                  actionType == 'logout') {
-                actionType = 'unknown';
-              }
-              // 2. Add actions: create, insert, add (account/property)
-              else if (actionType.contains('create') || 
-                  actionType.contains('insert') || 
-                  (actionType.contains('add') && !actionType.contains('update')) ||
-                  actionType == 'c' ||
-                  actionType == 'add account' ||
-                  actionType == 'add property' ||
-                  detailsLower.contains('create') ||
-                  detailsLower.contains('insert') ||
-                  detailsLower.contains('add account') ||
-                  detailsLower.contains('add property') ||
-                  detailsLower.contains('created') ||
-                  detailsLower.contains('new reservation') ||
-                  detailsLower.contains('new property')) {
-                actionType = 'add';
-              } 
-              // 3. Delete actions: delete, remove
-              else if (actionType.contains('delete') || 
-                       actionType.contains('remove') || 
-                       actionType == 'd' ||
-                       detailsLower.contains('delete') ||
-                       detailsLower.contains('remove') ||
-                       detailsLower.contains('deleted') ||
-                       detailsLower.contains('removed')) {
-                actionType = 'delete';
-              } 
-              // 4. Edit actions: update, edit, modify (profile/property) - but NOT login/logout
-              else if (actionType.contains('update') || 
-                       actionType.contains('edit') || 
-                       actionType.contains('modify') || 
-                       actionType == 'u' ||
-                       actionType == 'update profile' ||
-                       actionType == 'update property' ||
-                       actionType == 'edit property' ||
-                       (detailsLower.contains('update') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
-                       (detailsLower.contains('edit') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
-                       detailsLower.contains('modify') ||
-                       detailsLower.contains('updated') ||
-                       (detailsLower.contains('edited') && !detailsLower.contains('login') && !detailsLower.contains('logout')) ||
-                       detailsLower.contains('modified') ||
-                       detailsLower.contains('change')) {
-                actionType = 'edit';
-              }
-              // 5. Default to unknown if no clear match
-              else {
-                actionType = 'unknown';
-              }
-              
-              // Get property name from various possible fields
-              String propertyName = log['propertyaddress'] ??
-                                   log['propertyAddress'] ??
-                                   log['propertyname'] ?? 
-                                   log['propertyName'] ?? 
-                                   log['propertydescription'] ?? 
-                                   log['propertyDescription'] ?? 
-                                   log['entityname'] ?? 
-                                   log['entityName'] ??
-                                   log['property'] ??
-                                   log['entitytype'] ?? 
-                                   log['entityType'] ?? 
-                                   'Property';
-              
-              // Get username
-              String username = log['username'] ?? 
-                               log['userName'] ?? 
-                               log['user'] ?? 
-                               log['modifiedby'] ?? 
-                               log['modifiedBy'] ?? 
-                               'Unknown';
-              
-              // If details is empty, create a default message based on action type
-              if (details.isEmpty) {
-                if (actionType == 'add') {
-                  details = 'Created new property listing${propertyName != 'Property' ? ' for $propertyName' : ''}';
-                } else if (actionType == 'edit') {
-                  details = 'Updated property details${propertyName != 'Property' ? ' for $propertyName' : ''}';
-                } else if (actionType == 'delete') {
-                  details = 'Removed property listing${propertyName != 'Property' ? ' for $propertyName' : ''}';
-                } else {
-                  details = 'Property action performed';
-                }
-              }
-              
-              _auditTrail.add({
-                'action': actionType,
-                'user': username,
-                'property': propertyName,
-                'time': _formatTimestamp(log['timestamp'] ?? log['createdat'] ?? log['createdAt'] ?? log['time']),
-                'details': details,
-              });
-              
-              print('ManageService: Mapped audit log - action: $actionType, user: $username, property: $propertyName, details: $details');
-              print('ManageService: Raw actiontype field: ${log['actiontype']}, Raw action field: ${log['action']}, Raw details: ${details}');
-            }
-          }
-          
-          print('ManageService: Audit logs loaded: ${_auditTrail.length}');
-        });
-      }
-    } catch (error) {
-      print('ManageService: Error fetching audit trails: $error');
-      // Don't show error - just keep existing/hardcoded data
-    }
-
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
     
-    print('ManageService: Data loading complete');
+    print('Property: Data loading complete');
     print('Total properties: ${_properties.length}');
-    print('Total audit logs: ${_auditTrail.length}');
   }
 
   String _formatTimestamp(dynamic timestamp) {
@@ -379,23 +228,6 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
   }
   // ----------------- PROPERTY DATA -----------------
   final List<Map<String, dynamic>> _properties = [];
-
-  // ----------------- AUDIT TRAIL DATA -----------------
-  final List<Map<String, dynamic>> _auditTrail = [];
-
-  // ----------------- UI STATE -----------------
-  bool isExpanded = false;
-  String _auditFilterUser = 'All';
-
-  // Helper: filter audit trail by user
-  List<Map<String, dynamic>> _filteredAudit([int? take]) {
-    final list = _auditTrail.where((log) {
-      if (_auditFilterUser == 'All') return true;
-      return (log['user'] as String) == _auditFilterUser;
-    }).toList();
-    if (take != null && take < list.length) return list.take(take).toList();
-    return list;
-  }
 
   // ----------------- ADD / EDIT PROPERTY -----------------
   void _showAddPropertyDialog({Map<String, dynamic>? existingProperty}) {
@@ -703,7 +535,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                             imageBytes: selectedImageBytes,
                             categoryName: selectedCategory ?? 'Homestay', // Pass selected category
                           );
-                          print('ManageService: Property created successfully, result: $result');
+                          print('Property: Property created successfully, result: $result');
                           
                           if (mounted) {
                             Navigator.of(mainWidgetContext).pop(); // close progress
@@ -725,7 +557,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                           // Reload data to show the new property
                           await _loadData();
                           
-                          print('ManageService: Data reloaded, properties count: ${_properties.length}');
+                          print('Property: Data reloaded, properties count: ${_properties.length}');
                         } catch (error) {
                           if (mounted) {
                             Navigator.of(mainWidgetContext).pop();
@@ -744,11 +576,11 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                         // Update existing property
                         final propertyid = existingProperty['propertyid'];
                         if (propertyid != null) {
-                          print('ManageService: Updating property $propertyid...');
+                          print('Property: Updating property $propertyid...');
 
                           // Update property status via API
                           await api.updatePropertyStatus(propertyid, availability);
-                          print('ManageService: Property updated successfully');
+                          print('Property: Property updated successfully');
 
                           // Reload data
                           await _loadData();
@@ -765,7 +597,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                         }
                       }
                     } catch (error) {
-                      print('ManageService: Error saving property: $error');
+                      print('Property: Error saving property: $error');
                       if (mounted) {
                         try {
                           ScaffoldMessenger.of(mainWidgetContext).showSnackBar(
@@ -776,7 +608,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                           ),
                         );
                         } catch (e) {
-                          print('ManageService: Could not show error snackbar: $e');
+                          print('Property: Could not show error snackbar: $e');
                         }
                       }
                     }
@@ -795,7 +627,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
   // ----------------- DELETE PROPERTY -----------------
   void _deleteProperty(int index) async {
     if (index < 0 || index >= _properties.length) {
-      print('ManageService: Invalid property index: $index');
+      print('Property: Invalid property index: $index');
       return;
     }
     
@@ -803,7 +635,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
     final propertyid = property['propertyid'];
     
     if (propertyid == null) {
-      print('ManageService: Property ID is null, cannot delete');
+      print('Property: Property ID is null, cannot delete');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -862,9 +694,9 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
         );
       }
 
-        print('ManageService: Deleting property $propertyid...');
+        print('Property: Deleting property $propertyid...');
         await api.deleteProperty(propertyid);
-        print('ManageService: Property deleted successfully');
+        print('Property: Property deleted successfully');
       
       // Close loading indicator
       if (mounted) {
@@ -884,7 +716,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
           );
         }
       } catch (error) {
-        print('ManageService: Error deleting property: $error');
+        print('Property: Error deleting property: $error');
       
       // Close loading indicator if still open
         if (mounted) {
@@ -905,189 +737,9 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
     }
   }
 
-  // ----------------- FULL AUDIT TRAIL (Live Filter + Search) -----------------
-  Future<void> _showFullAuditTrail() async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        String selectedUser = _auditFilterUser;
-        String searchQuery = '';
-
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final logs = _auditTrail.where((log) {
-              final matchesUser = selectedUser == 'All' ||
-                  (log['user'] as String) == selectedUser;
-              final matchesSearch = log['property']
-                  .toString()
-                  .toLowerCase()
-                  .contains(searchQuery.toLowerCase());
-              return matchesUser && matchesSearch;
-            }).toList();
-
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    height: 4,
-                    width: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Full Audit Trail',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-
-                  // -------- Filter & Search Bar --------
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        const Text('Filter:'),
-                        const SizedBox(width: 8),
-                        DropdownButton<String>(
-                          value: selectedUser,
-                          style: const TextStyle(
-                            color: Color(0xFFD6EEFF),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          dropdownColor: Colors.white,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'All',
-                              child: Text('All', style: TextStyle(color: Colors.black87)),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Admin',
-                              child: Text('Admin', style: TextStyle(color: Colors.black87)),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Moderator',
-                              child: Text('Moderator', style: TextStyle(color: Colors.black87)),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setModalState(() => selectedUser = v);
-                            setState(() => _auditFilterUser = v);
-                          },
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${logs.length} record(s)',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: 'Search by property name...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setModalState(() => searchQuery = value),
-                    ),
-                  ),
-                  Expanded(
-                    child: logs.isEmpty
-                        ? const Center(child: Text('No matching records.'))
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: logs.length,
-                            itemBuilder: (context, index) =>
-                                _buildAuditCard(logs[index]),
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    setState(() {}); // refresh main UI after closing
-  }
-
-  // ----------------- AUDIT CARD BUILDER -----------------
-  Widget _buildAuditCard(Map<String, dynamic> log) {
-    // Get action type and normalize it (handle case sensitivity and whitespace)
-    final actionType = (log['action']?.toString().toLowerCase().trim() ?? 'edit');
-    final details = (log['details']?.toString().toLowerCase().trim() ?? '');
-    
-    // Determine color and icon based on action type
-    final Color color;
-    final IconData icon;
-    
-    // Use the parsed actionType directly (it's already normalized in the parsing logic)
-    // Add actions: add, create, insert, add account, add property
-    if (actionType == 'add') {
-      color = const Color(0xFFA8D5FF); // Light blue for add
-      icon = Icons.add_circle;
-    } 
-    // Edit actions: edit, update, modify, update profile, update property, edit property
-    else if (actionType == 'edit') {
-      color = const Color(0xFFB3D9FF); // Medium blue for edit
-      icon = Icons.edit;
-    } 
-    // Delete actions: delete, remove
-    else if (actionType == 'delete') {
-      color = const Color(0xFFC5D9E8); // Blue-gray for delete
-      icon = Icons.delete;
-    } else {
-      // Default/Unknown actions (Login, Logout, Assign User Role, etc.) - use default color
-      // This includes actions that don't match add/edit/delete patterns
-      print('ManageService: Unknown/default action type: $actionType, details: $details');
-      color = const Color(0xFF89CFF0); // Default blue for unknown actions
-      icon = Icons.edit; // Still show edit icon for unknown actions
-    }
-
-    return Card(
-      color: color,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.white,
-          child: Icon(icon, color: Colors.black87),
-        ),
-        title: Text('${log['user']} ${log['action'] == 'unknown' ? 'posted' : log['action']}ed ${log['property']}'),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(log['details']),
-            const SizedBox(height: 4),
-            Text(log['time'], style: const TextStyle(color: Colors.black54)),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ----------------- MAIN PAGE -----------------
   @override
   Widget build(BuildContext context) {
-    final previewLogs = _filteredAudit(3);
     final themeColor = _getThemeColor();
 
     return Scaffold(
@@ -1099,15 +751,8 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
         leading: const SizedBox(width: 0, height: 0),
         leadingWidth: 0,
         toolbarHeight: kToolbarHeight,
-        title: const Text('Manage Services', style: TextStyle(color: Colors.white)),
+        title: const Text('Property', style: TextStyle(color: Colors.white)),
         backgroundColor: themeColor,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history, color: Color(0xFF0077B6)),
-            tooltip: 'View Full Audit Trail',
-            onPressed: _showFullAuditTrail,
-          ),
-        ],
       ),
       endDrawer: _userRole != null
           ? MoreMenuDrawer(
@@ -1200,109 +845,6 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
                         )
                       else
                         ..._properties.map((p) => _buildPropertyCard(p)).toList(),
-                      const SizedBox(height: 20),
-
-              // ---------- Collapsible Recent Activity ----------
-              GestureDetector(
-                onTap: () => setState(() => isExpanded = !isExpanded),
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF319EFE),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.history, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Text(
-                            isExpanded
-                                ? 'Hide Recent Activity'
-                                : 'Show Recent Activity',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white),
-                          ),
-                        ],
-                      ),
-                      Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        color: Colors.white,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              AnimatedCrossFade(
-                firstChild: const SizedBox.shrink(),
-                secondChild: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text('Recent Activity',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const Spacer(),
-                        DropdownButton<String>(
-                          value: _auditFilterUser,
-                          style: const TextStyle(
-                            color: Color(0xFFD6EEFF),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          dropdownColor: Colors.white,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'All',
-                              child: Text('All', style: TextStyle(color: Colors.black87)),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Admin',
-                              child: Text('Admin', style: TextStyle(color: Colors.black87)),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Moderator',
-                              child: Text('Moderator', style: TextStyle(color: Colors.black87)),
-                            ),
-                          ],
-                          onChanged: (v) => setState(() {
-                            _auditFilterUser = v ?? 'All';
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Track recent changes by Admins and Moderators.',
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 12),
-                    if (previewLogs.isEmpty)
-                      const Text('No activity for this filter.',
-                          style: TextStyle(color: Colors.black54)),
-                    ...previewLogs.map((log) => _buildAuditCard(log)),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _showFullAuditTrail,
-                        icon: Icon(Icons.expand_circle_down_rounded, color: _getThemeColor()),
-                        label: Text('View All Activity', style: TextStyle(color: _getThemeColor())),
-                      ),
-                    ),
-                  ],
-                ),
-                crossFadeState: isExpanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                duration: const Duration(milliseconds: 300),
-              ),
                       const SizedBox(height: 80), // Extra space for FloatingActionButton
                     ],
                   ),
@@ -1741,6 +1283,16 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
     }
     if (label == 'Reservation' || label == 'Bookings') {
       Navigator.of(context).pushNamed('/manage-booking');
+      return;
+    }
+    if (label == 'AuditTrails') {
+      final route = _getUserRoleEnum() == nav.UserRole.admin ? '/admin-audit-trails' : '/moderator-audit-trails';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      final route = _getUserRoleEnum() == nav.UserRole.admin ? '/admin-book-and-pay' : '/moderator-book-and-pay';
+      Navigator.of(context).pushNamed(route);
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(

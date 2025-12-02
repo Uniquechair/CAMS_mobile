@@ -298,6 +298,14 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       Navigator.of(context).pushReplacementNamed('/manage-booking');
       return;
     }
+    if (label == 'AuditTrails') {
+      Navigator.of(context).pushNamed('/admin-audit-trails');
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      Navigator.of(context).pushNamed('/admin-book-and-pay');
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),

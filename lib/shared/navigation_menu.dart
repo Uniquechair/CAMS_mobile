@@ -36,7 +36,6 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
         DrawerMenuItem(Icons.history, 'AuditTrails'),
-        DrawerMenuItem(Icons.trending_up, 'Finance'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.moderator:
@@ -47,7 +46,6 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
         DrawerMenuItem(Icons.history, 'AuditTrails'),
-        DrawerMenuItem(Icons.trending_up, 'Finance'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.customer:
@@ -66,7 +64,6 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.apartment, 'Properties'),
         DrawerMenuItem(Icons.calendar_today, 'Bookings'),
         DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
-        DrawerMenuItem(Icons.trending_up, 'Finance'),
         DrawerMenuItem(Icons.history, 'AuditTrails'),
         DrawerMenuItem(Icons.layers, 'Cluster'),
         DrawerMenuItem(Icons.person, 'Profile'),

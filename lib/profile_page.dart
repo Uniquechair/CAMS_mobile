@@ -47,13 +47,10 @@ class _ProfilePageState extends State<ProfilePage>
 
   String? _storedPassword;
 
-  // PayPal controllers
+  // PayPal & password controllers
   final TextEditingController _paypalController = TextEditingController();
-
-  // Password controllers used in dialog
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
 
   // Edit-profile dialog controllers
   final TextEditingController _editUsernameController =
@@ -111,8 +108,7 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (_routeUserRole == null && args?['userRole'] != null) {
       _routeUserRole = args?['userRole'].toString();
     }
@@ -132,20 +128,16 @@ class _ProfilePageState extends State<ProfilePage>
   Map<String, dynamic> _buildBaseUpdatePayload(int userid) {
     final payload = {
       'userid': userid,
-      'username': _fullUserData?['username'] ?? _userName ?? '',
-      'ufirstname':
-          _fullUserData?['ufirstname'] ?? _fullUserData?['firstname'] ?? '',
-      'ulastname':
-          _fullUserData?['ulastname'] ?? _fullUserData?['lastname'] ?? '',
-      'udob': _fullUserData?['udob'] ?? _fullUserData?['dob'] ?? null,
-      'utitle': _fullUserData?['utitle'] ?? _fullUserData?['title'] ?? null,
-      'ugender':
-          _fullUserData?['ugender'] ?? _fullUserData?['gender'] ?? null,
-      'uemail': _fullUserData?['uemail'] ?? _userEmail ?? '',
-      'uphoneno': _fullUserData?['uphoneno'] ?? _userPhone ?? '',
-      'ucountry': _fullUserData?['ucountry'] ?? _userAddress ?? '',
-      'uzipcode':
-          _fullUserData?['uzipcode'] ?? _fullUserData?['zipcode'] ?? null,
+      'username': _fullUserData!['username'] ?? _userName ?? '',
+      'ufirstname': _fullUserData!['ufirstname'] ?? _fullUserData!['firstname'] ?? '',
+      'ulastname': _fullUserData!['ulastname'] ?? _fullUserData!['lastname'] ?? '',
+      'udob': _fullUserData!['udob'] ?? _fullUserData!['dob'] ?? null,
+      'utitle': _fullUserData!['utitle'] ?? _fullUserData!['title'] ?? null,
+      'ugender': _fullUserData!['ugender'] ?? _fullUserData!['gender'] ?? null,
+      'uemail': _fullUserData!['uemail'] ?? _userEmail ?? '',
+      'uphoneno': _fullUserData!['uphoneno'] ?? _userPhone ?? '',
+      'ucountry': _fullUserData!['ucountry'] ?? _userAddress ?? '',
+      'uzipcode': _fullUserData!['uzipcode'] ?? _fullUserData!['zipcode'] ?? null,
     };
 
     payload.removeWhere((key, value) {
@@ -171,15 +163,19 @@ class _ProfilePageState extends State<ProfilePage>
         _errorMessage = null;
       });
 
+      // Get user ID from session
       final userid = await Session.getUserId();
       if (userid == null) {
         throw Exception('User not logged in');
       }
 
+      // Fetch user data from API
       final userData = await api.fetchUserData(userid);
-
+      
+      // Store full user data for updates
       _fullUserData = userData;
 
+      // Get user role from session
       final userGroup = await Session.getUserGroup();
 
       if (mounted) {
@@ -192,9 +188,9 @@ class _ProfilePageState extends State<ProfilePage>
           _storedPassword = userData['password']?.toString();
           _isLoading = false;
 
+          // Prefill PayPal ID if backend sends it (check both paypalid and paypal_email)
           _paypalController.text =
-              (userData['paypalid'] ?? userData['paypal_email'] ?? '')
-                  .toString();
+              (userData['paypalid'] ?? userData['paypal_email'] ?? '').toString();
         });
       }
     } catch (error) {
@@ -262,6 +258,7 @@ class _ProfilePageState extends State<ProfilePage>
       return;
     }
 
+    // Validate email format
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
     if (!emailRegex.hasMatch(paypalEmail)) {
       if (!mounted) return;
@@ -275,6 +272,7 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     try {
+      // Get user ID from session
       final userid = await Session.getUserId();
       if (userid == null) {
         if (!mounted) return;
@@ -287,6 +285,7 @@ class _ProfilePageState extends State<ProfilePage>
         return;
       }
 
+      // Show loading indicator
       if (!mounted) return;
       showDialog(
         context: context,
@@ -296,11 +295,13 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       );
 
+      // Call API to update PayPal ID
+      // Backend requires ALL fields, so we need to include current user data
       if (_fullUserData == null) {
+        // Reload user data if not available
         await _loadUserData();
         if (_fullUserData == null) {
           if (!mounted) return;
-          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Failed to load user data. Please try again.'),
@@ -310,18 +311,26 @@ class _ProfilePageState extends State<ProfilePage>
           return;
         }
       }
-
+      
+      // Build update data - PayPal email update only (like website payment tab)
+      // Only send userid and paypalid - no password or other fields needed
       final updateData = {
         'userid': userid,
-        'paypalid': paypalEmail,
+        'paypalid': paypalEmail, // Backend expects 'paypalid' not 'paypal_email'
       };
-
+      
+      print('ProfilePage: Updating PayPal ID for userid: $userid');
+      print('ProfilePage: PayPal ID: $paypalEmail');
+      print('ProfilePage: Update data keys: ${updateData.keys.toList()}');
+      
       await api.updateProfile(updateData);
 
+      // Close loading dialog
       if (mounted) {
         Navigator.pop(context);
       }
 
+      // Show success message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -330,12 +339,17 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       );
 
+      // Reload user data to reflect changes
       _loadUserData();
     } catch (error) {
+      print('Error updating PayPal email: $error');
+      
+      // Close loading dialog if still open
       if (mounted) {
         Navigator.pop(context);
       }
 
+      // Show error message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -450,6 +464,7 @@ class _ProfilePageState extends State<ProfilePage>
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
 
+    // Fallback order: fetched data -> route args -> widget defaults
     final userName = _userName ?? args?['userName'] ?? widget.userName;
     final userEmail = _userEmail ?? args?['userEmail'] ?? widget.userEmail;
     final userRole = args?['userRole'] ?? _userRole ?? 'customer';
@@ -483,7 +498,7 @@ class _ProfilePageState extends State<ProfilePage>
         elevation: 0,
         backgroundColor: headerColor,
       ),
-      endDrawer: navRole != null && navRole != nav.UserRole.customer
+      endDrawer: (navRole != null && navRole != nav.UserRole.customer)
           ? MoreMenuDrawer(
               role: navRole,
               onItemSelected: _handleMenuSelection,
@@ -494,54 +509,232 @@ class _ProfilePageState extends State<ProfilePage>
       body: SafeArea(
         top: false,
         child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF0077B6),
-                ),
-              )
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    if (_errorMessage != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade300),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.warning_amber_rounded,
-                                color: Colors.orange.shade700),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  color: Colors.orange.shade900,
-                                  fontSize: 13,
-                                ),
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF0077B6),
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Error message
+                  if (_errorMessage != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange.shade700),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(
+                                color: Colors.orange.shade900,
+                                fontSize: 13,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.refresh),
-                              onPressed: _loadUserData,
-                              color: Colors.orange.shade700,
-                              tooltip: 'Retry',
-                            ),
-                          ],
-                        ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: _loadUserData,
+                            color: Colors.orange.shade700,
+                            tooltip: 'Retry',
+                          ),
+                        ],
                       ),
+                    ),
 
-                    // === Profile + Account card ===
+                  // === Profile + Account card ===
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: _cardRadius,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Profile header
+                        Center(
+                          child: Column(
+                            children: [
+                              CircleAvatar(
+                                radius: 46,
+                                backgroundColor: headerColor,
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Colors.white,
+                                  size: 52,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                userName,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: _textDark,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                userEmail,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: headerColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  rbac.RBACService.getRoleDisplayName(
+                                      _userRole ?? userRole),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: headerColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: headerColor,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                    horizontal: 22,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  // Show edit profile popup dialog
+                                  _showEditProfileDialog();
+                                  // Keep existing info message
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Settings page coming soon',
+                                        style: TextStyle(color: Colors.black),
+                                      ),
+                                      backgroundColor: Color(0xFF468FAF),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.settings,
+                                    color: Colors.white, size: 18),
+                                label: const Text(
+                                  "Edit Profile",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+                        Text(
+                          "Account Information",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Divider(
+                          height: 20,
+                          thickness: 1,
+                          color: Colors.grey.shade200,
+                        ),
+                        const SizedBox(height: 4),
+
+                        _infoRow(
+                          icon: Icons.badge,
+                          label: "Username",
+                          value: userName,
+                          color: headerColor,
+                        ),
+                        _infoRow(
+                          icon: Icons.email_outlined,
+                          label: "Email",
+                          value: userEmail,
+                          color: headerColor,
+                        ),
+                        _infoRow(
+                          icon: Icons.verified_user,
+                          label: "Account Status",
+                          value: "Active",
+                          color: headerColor,
+                        ),
+                        _infoRow(
+                          icon: Icons.group,
+                          label: "User Role",
+                          value: _userRole != null
+                              ? rbac.RBACService.getRoleDisplayName(_userRole!)
+                              : userRole.toString().toUpperCase(),
+                          color: headerColor,
+                        ),
+                        if (_userPhone != null && _userPhone!.isNotEmpty)
+                          _infoRow(
+                            icon: Icons.phone,
+                            label: "Phone",
+                            value: _userPhone!,
+                            color: headerColor,
+                          ),
+                        if (_userAddress != null &&
+                            _userAddress!.isNotEmpty)
+                          _infoRow(
+                            icon: Icons.location_on,
+                            label: "Address",
+                            value: _userAddress!,
+                            color: headerColor,
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // === PayPal card (Admin / Moderator only) ===
+                  if (canEditPaypal)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
-                        vertical: 24,
+                        vertical: 20,
                         horizontal: 18,
                       ),
                       decoration: BoxDecoration(
@@ -549,94 +742,17 @@ class _ProfilePageState extends State<ProfilePage>
                         borderRadius: _cardRadius,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
                           ),
                         ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Center(
-                            child: Column(
-                              children: [
-                                CircleAvatar(
-                                  radius: 46,
-                                  backgroundColor: headerColor,
-                                  child: const Icon(
-                                    Icons.person,
-                                    color: Colors.white,
-                                    size: 52,
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  userName,
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: _textDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  userEmail,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: _textMuted,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: headerColor.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    rbac.RBACService.getRoleDisplayName(
-                                        _userRole ?? userRole),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: headerColor,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 18),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: headerColor,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 10,
-                                      horizontal: 22,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(30),
-                                    ),
-                                  ),
-                                  onPressed: _showEditProfileDialog,
-                                  icon: const Icon(Icons.settings,
-                                      color: Colors.white, size: 18),
-                                  label: const Text(
-                                    "Edit Profile",
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
                           Text(
-                            "Account Information",
+                            "PayPal Email",
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -644,200 +760,114 @@ class _ProfilePageState extends State<ProfilePage>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Divider(
-                            height: 20,
-                            thickness: 1,
-                            color: Colors.grey.shade200,
+                          TextField(
+                            controller: _paypalController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(
+                              hintText: "Enter your PayPal email",
+                              hintStyle: TextStyle(color: _textMuted),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: _primaryBlue,
+                                  width: 1.6,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Payment Information",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: _textDark,
+                            ),
                           ),
                           const SizedBox(height: 4),
-
-                          _infoRow(
-                            icon: Icons.badge,
-                            label: "Username",
-                            value: userName,
-                            color: headerColor,
-                          ),
-                          _infoRow(
-                            icon: Icons.email_outlined,
-                            label: "Email",
-                            value: userEmail,
-                            color: headerColor,
-                          ),
-                          _infoRow(
-                            icon: Icons.verified_user,
-                            label: "Account Status",
-                            value: "Active",
-                            color: headerColor,
-                          ),
-                          _infoRow(
-                            icon: Icons.group,
-                            label: "User Role",
-                            value: _userRole != null
-                                ? rbac.RBACService.getRoleDisplayName(_userRole!)
-                                : userRole.toString().toUpperCase(),
-                            color: headerColor,
-                          ),
-                          if (_userPhone != null && _userPhone!.isNotEmpty)
-                            _infoRow(
-                              icon: Icons.phone,
-                              label: "Phone",
-                              value: _userPhone!,
-                              color: headerColor,
+                          Text(
+                            "As an Admin or Moderator, you are required to "
+                            "provide your PayPal account for receiving payments.",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _textMuted,
+                              height: 1.4,
                             ),
-                          if (_userAddress != null &&
-                              _userAddress!.isNotEmpty)
-                            _infoRow(
-                              icon: Icons.location_on,
-                              label: "Address",
-                              value: _userAddress!,
-                              color: headerColor,
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _updatePaypal,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _primaryBlue,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                "Update PayPal Information",
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
+                          ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 18),
+                  const SizedBox(height: 18),
 
-                    // === PayPal card (Admin / Moderator only) ===
-                    if (canEditPaypal)
-                      Container(
-                        width: double.infinity,
+                  const SizedBox(height: 24),
+
+                  // Logout button (full width)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryBlue,
                         padding: const EdgeInsets.symmetric(
-                          vertical: 20,
-                          horizontal: 18,
+                          vertical: 14,
+                          horizontal: 28,
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: _cardRadius,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "PayPal Email",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: _textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _paypalController,
-                              keyboardType: TextInputType.emailAddress,
-                              decoration: InputDecoration(
-                                hintText: "Enter your PayPal email",
-                                hintStyle: TextStyle(color: _textMuted),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide(
-                                    color: _primaryBlue,
-                                    width: 1.6,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Payment Information",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: _textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "As an Admin or Moderator, you are required to "
-                              "provide your PayPal account for receiving payments.",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _textMuted,
-                                height: 1.4,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _updatePaypal,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _primaryBlue,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: const Text(
-                                  "Update PayPal Information",
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
                         ),
                       ),
-
-                    const SizedBox(height: 24),
-
-                    // Logout button (full width)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primaryBlue,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 14,
-                            horizontal: 28,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        icon: const Icon(Icons.logout, color: Colors.white),
-                        label: const Text(
-                          "Logout",
-                          style:
-                              TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                        onPressed: _handleLogout,
+                      icon: const Icon(Icons.logout, color: Colors.white),
+                      label: const Text(
+                        "Logout",
+                        style: TextStyle(fontSize: 16, color: Colors.white),
                       ),
+                      onPressed: _handleLogout,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
       ),
-      bottomNavigationBar: navRole != null
-          ? SharedBottomNavigationBar(
-              selectedIndex: _selectedIndex,
-              onTap: _handleBottomNavTap,
-              scaffoldKey: _scaffoldKey,
-              role: navRole,
-            )
-          : null,
+      bottomNavigationBar: navRole != null ? SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: navRole,
+      ) : null,
     );
   }
 
-  /// Glassmorphism Edit Profile dialog with username, phone, and password
+  // Glassmorphism Edit Profile dialog with username, phone, and password
   Future<void> _showEditProfileDialog() async {
     _editUsernameController.text = _userName ?? widget.userName;
     _editPhoneController.text = _userPhone ?? '';
@@ -1255,7 +1285,7 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  /// Handles validation + backend update when user taps "Save Changes" in dialog
+  // Handles validation + backend update when user taps "Save Changes" in dialog
   Future<void> _handleSaveFromDialog(
     BuildContext dialogCtx,
     void Function(void Function()) setStateDialog,
@@ -1398,9 +1428,13 @@ class _ProfilePageState extends State<ProfilePage>
     final role = _userRoleEnum;
     if (role == null) return;
 
-    if (index == 4) return;
+    if (index == 4) {
+      // More button - handled by SharedBottomNavigationBar to open drawer
+      return;
+    }
 
     if (index == 0) {
+      // Dashboard/Home
       String route;
       switch (role) {
         case nav.UserRole.admin:
@@ -1421,18 +1455,17 @@ class _ProfilePageState extends State<ProfilePage>
         navigator.pushNamedAndRemoveUntil(route, (route) => false);
       } else {
         if (!mounted) return;
-        Navigator.of(context, rootNavigator: true)
-            .pushNamedAndRemoveUntil(route, (route) => false);
+        Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(route, (route) => false);
       }
       return;
     }
 
     if (index == 1) {
+      // Properties/Cart
       if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-cart');
       } else if (role == nav.UserRole.owner) {
-        Navigator.of(context)
-            .pushReplacementNamed('/owner-property-listing');
+        Navigator.of(context).pushReplacementNamed('/owner-property-listing');
       } else {
         Navigator.of(context).pushReplacementNamed('/manage-services');
       }
@@ -1440,6 +1473,7 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     if (index == 2) {
+      // Bookings
       if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-bookings');
       } else if (role == nav.UserRole.owner) {
@@ -1451,6 +1485,7 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     if (index == 3) {
+      // Profile - already on this page
       if (_selectedIndex != 3) {
         setState(() => _selectedIndex = 3);
       }
@@ -1458,7 +1493,7 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   void _handleMenuSelection(String label) {
-    Navigator.pop(context);
+    Navigator.pop(context); // Close drawer first
     final role = _userRoleEnum;
     if (role == null) return;
 
@@ -1484,20 +1519,21 @@ class _ProfilePageState extends State<ProfilePage>
           navigator.pushNamedAndRemoveUntil(route, (route) => false);
         } else {
           if (!mounted) return;
-          Navigator.of(context, rootNavigator: true)
-              .pushNamedAndRemoveUntil(route, (route) => false);
+          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(route, (route) => false);
         }
         break;
       case 'Profile':
+        // Already on profile page
         break;
       case 'Properties':
+    
         if (role == nav.UserRole.owner) {
-          Navigator.of(context)
-              .pushReplacementNamed('/owner-property-listing');
+          Navigator.of(context).pushReplacementNamed('/owner-property-listing');
         } else {
           Navigator.of(context).pushReplacementNamed('/manage-services');
         }
         break;
+      
       case 'Bookings':
         if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-reservation');
@@ -1512,34 +1548,53 @@ class _ProfilePageState extends State<ProfilePage>
         Navigator.of(context).pushReplacementNamed('/customer-cart');
         break;
       case 'Notifications':
-        Navigator.of(context)
-            .pushReplacementNamed('/customer-notifications');
+        Navigator.of(context).pushReplacementNamed('/customer-notifications');
         break;
       case 'User Management':
-        final appRole =
-            role == nav.UserRole.admin ? AppRole.admin : AppRole.moderator;
-        Navigator.of(context).pushReplacementNamed(
-          '/user-management',
-          arguments: appRole,
-        );
+        // Navigate to user management page with appropriate role
+        final appRole = role == nav.UserRole.admin ? AppRole.admin : AppRole.moderator;
+        Navigator.of(context).pushReplacementNamed('/user-management', arguments: appRole);
         break;
       case 'Customer':
+        // Owner navigation to customer management
         if (role == nav.UserRole.owner) {
-          Navigator.of(context)
-              .pushReplacementNamed('/owner-manage-customer');
+          Navigator.of(context).pushReplacementNamed('/owner-manage-customer');
         }
         break;
       case 'Moderator/Admin':
+        // Owner navigation to moderator/admin management
         if (role == nav.UserRole.owner) {
-          Navigator.of(context)
-              .pushReplacementNamed('/owner-manage-moderatoradmin');
+          Navigator.of(context).pushReplacementNamed('/owner-manage-moderatoradmin');
+        }
+        break;
+      case 'BooknPayLog':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-book-and-pay');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-book-and-pay');
+        } else if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-book-and-pay');
+        }
+        break;
+      case 'AuditTrails':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-audit-trails');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-audit-trails');
+        } else if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-audit-trails');
+        }
+        break;
+      case 'Cluster':
+        // Owner navigation to cluster management
+        if (role == nav.UserRole.owner) {
+          Navigator.of(context).pushReplacementNamed('/owner-cluster');
         }
         break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Navigating to $label',
-                style: const TextStyle(color: Colors.black)),
+            content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
             backgroundColor: const Color(0xFF468FAF),
             duration: const Duration(seconds: 1),
           ),
@@ -1547,6 +1602,7 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
+  // Small helper to keep account rows consistent & neat
   Widget _infoRow({
     required IconData icon,
     required String label,
@@ -1562,7 +1618,7 @@ class _ProfilePageState extends State<ProfilePage>
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 18),

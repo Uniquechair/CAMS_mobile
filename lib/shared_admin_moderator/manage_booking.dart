@@ -91,9 +91,8 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     });
 
     try {
-      print(
-          'ManageBooking: Loading bookings for role: $_currentUserRole, userid: $_currentUserId');
-
+      print('ManageBooking: Loading bookings for role: $_currentUserRole, userid: $_currentUserId');
+      
       if (_currentUserId == null) {
         print('ManageBooking: User ID is null, cannot fetch bookings');
         setState(() {
@@ -101,51 +100,56 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
         });
         return;
       }
-
+      
+      // Fetch reservations from API based on hierarchy
+      // Backend should filter:
+      // - Moderator: only customers under that moderator
+      // - Admin: customers under admin + customers under moderators under that admin
       final reservationsData = await api.fetchReservationsForAdminModerator();
-
-      print(
-          'ManageBooking: Received ${reservationsData.length} reservations from backend');
-
+      
+      print('ManageBooking: Received ${reservationsData.length} reservations from backend');
+      
       List<Map<String, dynamic>> loadedBookings = [];
-
+      
       for (var reservation in reservationsData) {
         try {
+          // Parse dates
           DateTime? startDate;
           DateTime? endDate;
-
+          
           if (reservation['checkindatetime'] != null) {
-            startDate =
-                DateTime.parse(reservation['checkindatetime'].toString());
+            startDate = DateTime.parse(reservation['checkindatetime'].toString());
           }
           if (reservation['checkoutdatetime'] != null) {
-            endDate =
-                DateTime.parse(reservation['checkoutdatetime'].toString());
+            endDate = DateTime.parse(reservation['checkoutdatetime'].toString());
           }
-
+          
           if (startDate == null || endDate == null) {
             print('ManageBooking: Skipping reservation with missing dates');
             continue;
           }
-
-          String propertyName = reservation['propertyname'] ??
-              reservation['propertyName'] ??
-              reservation['propertyaddress'] ??
-              reservation['propertyAddress'] ??
-              reservation['propertydescription'] ??
-              reservation['propertyDescription'] ??
-              'Unknown Property';
-
-          String customerName = reservation['rcfirstname'] ??
-              reservation['rcFirstName'] ??
-              reservation['customer'] ??
-              reservation['customername'] ??
-              'Unknown Customer';
-
+          
+          // Get property name
+          String propertyName = reservation['propertyname'] ?? 
+                               reservation['propertyName'] ?? 
+                               reservation['propertyaddress'] ?? 
+                               reservation['propertyAddress'] ??
+                               reservation['propertydescription'] ??
+                               reservation['propertyDescription'] ??
+                               'Unknown Property';
+          
+          // Get customer name
+          String customerName = reservation['rcfirstname'] ?? 
+                               reservation['rcFirstName'] ??
+                               reservation['customer'] ??
+                               reservation['customername'] ??
+                               'Unknown Customer';
+          
           if (reservation['rclastname'] != null) {
             customerName += ' ${reservation['rclastname']}';
           }
-
+          
+          // Get price
           double price = 0.0;
           if (reservation['totalprice'] != null) {
             if (reservation['totalprice'] is double) {
@@ -156,18 +160,18 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               price = double.tryParse(reservation['totalprice']) ?? 0.0;
             }
           }
-
-          String rawStatus = reservation['reservationstatus'] ??
-              reservation['reservationStatus'] ??
-              reservation['status'] ??
-              'Pending';
-
-          String status = (rawStatus.toString().toLowerCase() == 'enquiry')
-              ? 'Pending'
-              : rawStatus;
-
-          final rawReservationId =
-              reservation['reservationid'] ?? reservation['reservationId'];
+          
+          // Get status - for admin/moderator, show "Enquiry" as "Pending"
+          String rawStatus = reservation['reservationstatus'] ?? 
+                            reservation['reservationStatus'] ??
+                            reservation['status'] ??
+                            'Pending';
+          // Convert "Enquiry" to "Pending" for admin/moderator view
+          String status = (rawStatus.toString().toLowerCase() == 'enquiry') 
+                         ? 'Pending' 
+                         : rawStatus;
+          
+          final rawReservationId = reservation['reservationid'] ?? reservation['reservationId'];
           final int? reservationId = rawReservationId is int
               ? rawReservationId
               : int.tryParse(rawReservationId?.toString() ?? '');
@@ -190,21 +194,21 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
           continue;
         }
       }
-
+      
       final adjustedSelectedDate = _getAdjustedSelectedDate(loadedBookings);
       if (mounted) {
         setState(() {
           _bookings = loadedBookings;
           if (adjustedSelectedDate != null) {
             _selectedDate = adjustedSelectedDate;
-            print(
-                'ManageBooking: Adjusted selected date to $_selectedDate to match available bookings');
+            print('ManageBooking: Adjusted selected date to $_selectedDate to match available bookings');
           }
           _isLoading = false;
         });
       }
-
+      
       print('ManageBooking: Loaded ${_bookings.length} bookings');
+
     } catch (error) {
       print('ManageBooking: Error loading bookings: $error');
       if (mounted) {
@@ -221,13 +225,11 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFE7F0FF),
         title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?',
-            style: TextStyle(color: Colors.black)),
+        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.black)),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -244,8 +246,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     if (confirmed == true) {
       await Session.clear();
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-            context, '/before-login', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
       }
     }
   }
@@ -278,31 +279,29 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
                       const SizedBox(height: 16),
                       _buildViewToggle(),
                       const SizedBox(height: 16),
-                      _isCalendarView
-                          ? _buildCalendarView()
-                          : _buildTableView(),
+                      _isCalendarView ? _buildCalendarView() : _buildTableView(),
                     ],
                   ),
                 ),
               ),
             ),
-      bottomNavigationBar: _drawerRole != null
-          ? SharedBottomNavigationBar(
-              selectedIndex: _selectedIndex,
-              onTap: _handleBottomNavTap,
-              scaffoldKey: _scaffoldKey,
-              role: _drawerRole!,
-            )
-          : null,
+      bottomNavigationBar: _drawerRole != null ? SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: _drawerRole!,
+      ) : null,
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
+    // Determine theme color based on user role
     final isAdmin = _currentUserRole == 'admin';
-    final gradientColors = isAdmin
+    final themeColor = isAdmin ? const Color(0xFF649EFF) : const Color(0xFF78AAFF);
+    final gradientColors = isAdmin 
         ? const [Color(0xFF6366F1), Color(0xFF649EFF)]
         : const [Color(0xFF6366F1), Color(0xFF78AAFF)];
-
+    
     return AppBar(
       automaticallyImplyLeading: false,
       backgroundColor: Colors.white,
@@ -315,8 +314,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               gradient: LinearGradient(colors: gradientColors),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.calendar_today,
-                color: Colors.white, size: 24),
+            child: const Icon(Icons.calendar_today, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
           const Text(
@@ -354,16 +352,14 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
         decoration: InputDecoration(
           hintText: 'Search by property or customer name...',
           hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-          prefixIcon:
-              const Icon(Icons.search, color: Color(0xFF94A3B8)),
+          prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
     );
@@ -392,12 +388,10 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
         items: const [
-          DropdownMenuItem(
-              value: 'All Statuses', child: Text('All Statuses')),
+          DropdownMenuItem(value: 'All Statuses', child: Text('All Statuses')),
           DropdownMenuItem(value: 'Pending', child: Text('Pending')),
           DropdownMenuItem(value: 'Accepted', child: Text('Accepted')),
           DropdownMenuItem(value: 'Rejected', child: Text('Rejected')),
@@ -424,11 +418,8 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  _isCalendarView ? const Color(0xFF0077B6) : Colors.white,
-              foregroundColor: _isCalendarView
-                  ? Colors.white
-                  : const Color(0xFF64748B),
+              backgroundColor: _isCalendarView ? const Color(0xFF0077B6) : Colors.white,
+              foregroundColor: _isCalendarView ? Colors.white : const Color(0xFF64748B),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -450,11 +441,8 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  !_isCalendarView ? const Color(0xFF0077B6) : Colors.white,
-              foregroundColor: !_isCalendarView
-                  ? Colors.white
-                  : const Color(0xFF64748B),
+              backgroundColor: !_isCalendarView ? const Color(0xFF0077B6) : Colors.white,
+              foregroundColor: !_isCalendarView ? Colors.white : const Color(0xFF64748B),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -512,8 +500,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF64748B),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                   side: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -526,8 +513,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               icon: const Icon(Icons.chevron_left),
               onPressed: () {
                 setState(() {
-                  _selectedDate =
-                      DateTime(_selectedDate.year, _selectedDate.month - 1);
+                  _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1);
                 });
               },
             ),
@@ -535,8 +521,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
               icon: const Icon(Icons.chevron_right),
               onPressed: () {
                 setState(() {
-                  _selectedDate =
-                      DateTime(_selectedDate.year, _selectedDate.month + 1);
+                  _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1);
                 });
               },
             ),
@@ -554,38 +539,33 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   }
 
   Widget _buildCalendarGrid() {
-    final daysInMonth =
-        DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
-    final firstDayOfMonth =
-        DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+    final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final startingWeekday = firstDayOfMonth.weekday % 7;
 
     return Column(
       children: [
         Row(
           children: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-              .map(
-                (day) => Expanded(
-                  child: Center(
-                    child: Text(
-                      day,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
+              .map((day) => Expanded(
+                    child: Center(
+                      child: Text(
+                        day,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              )
+                  ))
               .toList(),
         ),
         const SizedBox(height: 8),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate:
-              const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 7,
             childAspectRatio: 1,
           ),
@@ -596,52 +576,51 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
             }
             final day = index - startingWeekday + 1;
             final currentDate = DateTime.now();
+            final isToday = day == currentDate.day &&
+                _selectedDate.month == currentDate.month &&
+                _selectedDate.year == currentDate.year;
             final isSelected = day == _selectedDate.day &&
                 _selectedDate.month == _selectedDate.month &&
                 _selectedDate.year == _selectedDate.year;
 
-            return Container(
-              margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                border:
-                    Border.all(color: const Color(0xFFE2E8F0)),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Center(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedDate = DateTime(_selectedDate.year,
-                          _selectedDate.month, day);
-                    });
-                  },
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF649EFF)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$day',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSelected
-                              ? Colors.white
-                              : const Color(0xFF1E293B),
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+              return Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month, day);
+                      });
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: isSelected 
+                            ? const Color(0xFF649EFF) 
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$day',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF1E293B),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            );
+              );
           },
         ),
       ],
@@ -684,25 +663,21 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
   }
 
   Widget _buildTableView() {
-    final filteredBookings = _bookings
-        .where((booking) {
-          final isStatusMatch = _selectedStatus == 'All Statuses' ||
-              booking['status'] == _selectedStatus;
+    // Filter bookings by status and search query only (table view should list all bookings)
+    final filteredBookings = _bookings.where((booking) {
+      final isStatusMatch = _selectedStatus == 'All Statuses' ||
+          booking['status'] == _selectedStatus;
 
-          final property =
-              (booking['property'] as String).toLowerCase();
-          final customer =
-              (booking['customer'] as String).toLowerCase();
-          final searchTerm = _searchQuery.toLowerCase();
-          final isSearchMatch = _searchQuery.isEmpty ||
-              property.contains(searchTerm) ||
-              customer.contains(searchTerm);
+      final property = (booking['property'] as String).toLowerCase();
+      final customer = (booking['customer'] as String).toLowerCase();
+      final searchTerm = _searchQuery.toLowerCase();
+      final isSearchMatch = _searchQuery.isEmpty ||
+          property.contains(searchTerm) ||
+          customer.contains(searchTerm);
 
-          return isStatusMatch && isSearchMatch;
-        })
-        .toList()
-      ..sort((a, b) => (b['start'] as DateTime)
-          .compareTo(a['start'] as DateTime));
+      return isStatusMatch && isSearchMatch;
+    }).toList()
+      ..sort((a, b) => (b['start'] as DateTime).compareTo(a['start'] as DateTime));
 
     return Container(
       decoration: BoxDecoration(
@@ -720,9 +695,7 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
       child: filteredBookings.isEmpty
           ? const Center(child: Text('No bookings for this date'))
           : Column(
-              children: filteredBookings
-                  .map((booking) => _buildReservationCard(booking))
-                  .toList(),
+              children: filteredBookings.map((booking) => _buildReservationCard(booking)).toList(),
             ),
     );
   }
@@ -1038,28 +1011,41 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
     );
   }
 
-  // --- Suggest Room dialog (UI only, no backend) ---
-  void _showSuggestRoomDialog(Map<String, dynamic> booking) {
+  // --- Suggest Room dialog (now backed by API /operatorProperties) ---
+  Future<void> _showSuggestRoomDialog(Map<String, dynamic> booking) async {
     final customerName = booking['customer'] as String? ?? 'Customer';
+    final reservationId = booking['reservationid'] as int?;
 
-    // Hard-coded sample rooms
-    final List<Map<String, String>> suggestions = [
-      {
-        'name': 'Santubong Homestay – Deluxe Room',
-        'price': 'RM 320.00 / night',
-        'info': '2 guests • Private bathroom',
-      },
-      {
-        'name': 'Damai Beach Homestay – Standard Room',
-        'price': 'RM 260.00 / night',
-        'info': '2 guests • Near current homestay',
-      },
-      {
-        'name': 'Kuching City Apartment',
-        'price': 'RM 280.00 / night',
-        'info': '3 guests • 10 mins drive',
-      },
-    ];
+    if (_currentUserId == null || reservationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot load suggestions: missing user or reservation ID'),
+        ),
+      );
+      return;
+    }
+
+    // Fetch available rooms for this operator and reservation
+    List<dynamic> suggestions = [];
+    try {
+      final data = await api.getOperatorProperties(_currentUserId!, reservationId);
+      if (data['data'] is List) {
+        suggestions = data['data'] as List<dynamic>;
+      } else {
+        suggestions = [];
+      }
+    } catch (e) {
+      print('ManageBooking: Error fetching operator properties: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load suggested rooms: $e'),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -1092,88 +1078,103 @@ class _AdminManageBookingState extends State<AdminManageBooking> {
                 ],
               ),
               const SizedBox(height: 12),
-              const Align(
+              Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Available options (mock data):',
-                  style: TextStyle(
+                  suggestions.isEmpty
+                      ? 'No available rooms found for this date.'
+                      : 'Available options:',
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Color(0xFF6B7280),
                   ),
                 ),
               ),
               const SizedBox(height: 8),
-              ...suggestions.map((room) {
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF9FAFB),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.hotel,
-                          size: 20, color: Color(0xFF4B5563)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              room['name']!,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF111827),
+              if (suggestions.isNotEmpty)
+                ...suggestions.map((room) {
+                  final Map<String, dynamic> r =
+                      room as Map<String, dynamic>;
+                  final String name =
+                      (r['propertyaddress'] ?? 'Property').toString();
+                  final String info =
+                      '${r['propertybedtype'] ?? ''} • ${r['propertyguestpaxno'] ?? ''} guests';
+                  final double price = r['normalrate'] is num
+                      ? (r['normalrate'] as num).toDouble()
+                      : double.tryParse(r['normalrate']?.toString() ?? '0') ??
+                          0.0;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE5E7EB)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.hotel,
+                            size: 20, color: Color(0xFF4B5563)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF111827),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              room['info']!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF6B7280),
+                              const SizedBox(height: 2),
+                              Text(
+                                info,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF6B7280),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              room['price']!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF2563EB),
+                              const SizedBox(height: 2),
+                              Text(
+                                'RM ${price.toStringAsFixed(2)} / night',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF2563EB),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Room suggestion sent to $customerName (UI only)',
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Room suggestion prepared for $customerName (backend email already handled separately).',
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF2563EB),
+                            );
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF2563EB),
+                          ),
+                          child: const Text(
+                            'Suggest',
+                            style:
+                                TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                        child: const Text(
-                          'Suggest',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                      ],
+                    ),
+                  );
+                }).toList(),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(

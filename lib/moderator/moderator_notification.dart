@@ -296,6 +296,14 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
       Navigator.of(context).pushReplacementNamed('/manage-booking');
       return;
     }
+    if (label == 'AuditTrails') {
+      Navigator.of(context).pushNamed('/moderator-audit-trails');
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      Navigator.of(context).pushNamed('/moderator-book-and-pay');
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),

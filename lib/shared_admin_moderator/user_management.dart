@@ -1490,6 +1490,16 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       Navigator.of(context).pushNamed('/manage-booking');
       return;
     }
+    if (label == 'AuditTrails') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-audit-trails' : '/moderator-audit-trails';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-book-and-pay' : '/moderator-book-and-pay';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),

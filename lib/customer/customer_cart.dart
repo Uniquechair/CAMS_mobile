@@ -52,8 +52,8 @@ class _CustomerCartState extends State<CustomerCart> {
     });
 
     try {
-      // Fetch all reservations
-      final allReservations = await api.fetchReservation();
+      // Fetch reservations only for this customer via dedicated /cart endpoint
+      final allReservations = await api.fetchCustomerReservations();
       final today = DateTime.now();
       final todayOnly = DateTime(today.year, today.month, today.day);
       
@@ -61,6 +61,7 @@ class _CustomerCartState extends State<CustomerCart> {
       List<Map<String, dynamic>> loadedBookings = [];
       
       for (var item in allReservations) {
+        if (item is! Map<String, dynamic>) continue;
         // Parse dates using backend field names: checkindatetime and checkoutdatetime
         dynamic checkInDate = item['checkindatetime'];
         dynamic checkOutDate = item['checkoutdatetime'];
@@ -637,7 +638,18 @@ class _CustomerCartState extends State<CustomerCart> {
       String errorMessage = 'Payment error occurred';
       String errorStr = error.toString().toLowerCase();
       
-      if (errorStr.contains('paypal integration not available') ||
+      // Check for backend PayPal authentication errors
+      if (errorStr.contains('backend paypal authentication failed') ||
+          errorStr.contains('backend paypal client id and secret') ||
+          errorStr.contains('invalid_client') ||
+          errorStr.contains('client authentication failed')) {
+        errorMessage = 'PayPal payment error: Backend PayPal authentication failed. Please contact support to verify the backend PayPal configuration.';
+      } else if (errorStr.contains('property owner has not set up') ||
+          errorStr.contains('owner has not set up their paypal') ||
+          errorStr.contains('paypal payment unavailable')) {
+        errorMessage = 'PayPal payment unavailable: The property owner has not set up their PayPal email. Please contact the property owner.';
+      } else if (errorStr.contains('paypal integration not available') ||
+          errorStr.contains('sandbox credentials not configured') ||
           errorStr.contains('endpoint not found') || 
           errorStr.contains('html') ||
           errorStr.contains('backend may not be configured') ||

@@ -13,6 +13,13 @@ import 'owner/owner_property_listing.dart';
 import 'owner/owner_reservation.dart';
 import 'owner/owner_manage_customer.dart';
 import 'owner/owner_manage_moderatoradmin.dart';
+import 'owner/owner_audit_trails.dart';
+import 'owner/owner_book_and_pay.dart';
+import 'owner/owner_cluster.dart';
+import 'admin/admin_audit_trails.dart';
+import 'admin/admin_book_and_pay.dart';
+import 'moderator/moderator_audit_trails.dart';
+import 'moderator/moderator_book_and_pay.dart';
 import 'shared_admin_moderator/manage_service.dart';
 import 'shared_admin_moderator/user_management.dart';
 import 'shared_admin_moderator/manage_booking.dart';
@@ -182,6 +189,13 @@ class _CamsAppState extends State<CamsApp> {
         '/owner-reservation': (context) => const OwnerReservationPage(),
         '/owner-manage-customer': (context) => const OwnerManageCustomers(),
         '/owner-manage-moderatoradmin': (context) => const OwnerManageOperators(),
+        '/owner-audit-trails': (context) => const OwnerAuditTrails(),
+        '/owner-book-and-pay': (context) => const OwnerBooknPayLog(),
+        '/owner-cluster': (context) => const OwnerClusterPage(),
+        '/admin-audit-trails': (context) => const AdminAuditTrails(),
+        '/admin-book-and-pay': (context) => const AdminBooknPayLog(),
+        '/moderator-audit-trails': (context) => const ModeratorAuditTrails(),
+        '/moderator-book-and-pay': (context) => const ModeratorBooknPayLog(),
         '/rbac-test': (context) => const RBACTestScreen(),
       },
     );

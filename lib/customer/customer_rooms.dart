@@ -794,11 +794,11 @@ class _RoomsPageState extends State<RoomsPage> {
                       items: availableLocations.isEmpty
                           ? [const DropdownMenuItem(value: null, child: Text('No locations available'))]
                           : availableLocations
-                              .map((location) => DropdownMenuItem(
-                                    value: location,
-                                    child: Text(location),
-                                  ))
-                              .toList(),
+                          .map((location) => DropdownMenuItem(
+                                value: location,
+                                child: Text(location),
+                              ))
+                          .toList(),
                       onChanged: (value) {
                         setModalState(() {
                           selectedLocation = value;
@@ -2477,6 +2477,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                             // Show success notification at the top
                             if (mounted) {
                               final overlay = Overlay.of(context);
+                              final navigator = Navigator.of(context);
                               late OverlayEntry overlayEntry;
                               
                               overlayEntry = OverlayEntry(
@@ -2531,12 +2532,18 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               );
                               
                               overlay.insert(overlayEntry);
-                              
-                              // Remove overlay after 3 seconds
-                              Future.delayed(const Duration(seconds: 3), () {
+                              print('CustomerRooms: success overlay shown, scheduling auto-nav to cart...');
+
+                              // After a short delay, close the overlay and navigate to cart automatically
+                              Future.delayed(const Duration(seconds: 1), () {
+                                print('CustomerRooms: auto-nav timer fired');
                                 if (overlayEntry.mounted) {
                                   overlayEntry.remove();
+                                  print('CustomerRooms: overlay removed before navigation');
                                 }
+                                // Use captured navigator so we can still navigate even if this State is unmounted
+                                navigator.pushReplacementNamed('/customer-cart');
+                                print('CustomerRooms: navigated to /customer-cart');
                               });
                             }
                           } catch (error) {

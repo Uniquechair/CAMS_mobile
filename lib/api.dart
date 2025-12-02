@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'services/session.dart';
 
-const String API_URL = 'https://cams-backend.vercel.app';
+const String API_URL = 'http://68.183.149.135:8080';
 
 // Register
 Future<http.Response> signupUser(Map<String, dynamic> userData) async {
@@ -112,15 +113,15 @@ Future<Map<String, dynamic>> propertiesListing(dynamic propertyData) async {
   }
 }
 
-// Fetch Properties (Product)
-Future<Map<String, dynamic>> fetchProduct() async {
+// Fetch Properties (Product) - can return a List or Map depending on backend
+Future<dynamic> fetchProduct() async {
   try {
     final response = await http.get(Uri.parse('$API_URL/product'));
 
     if (response.statusCode != 200) {
       throw Exception('Failed to fetch properties');
     }
-    final data = jsonDecode(response.body);
+    final dynamic data = jsonDecode(response.body);
     return data; 
   } catch (error) {
     print('Error fetching properties: $error');
@@ -1153,7 +1154,7 @@ Future<bool> checkDateOverlap({
   }
 }
 
-// Fetch all Reservations
+// Fetch all Reservations (dashboard views; can return many users' reservations depending on role)
 Future<List<dynamic>> fetchReservation() async {
   final username = await Session.getUsername();
   
@@ -1195,6 +1196,51 @@ Future<List<dynamic>> fetchReservation() async {
     return [];
   } catch (error) {
     print('API error fetching reservations: $error');
+    return [];
+  }
+}
+
+// Fetch Reservations for the currently logged-in customer only (Cart / Bookings)
+Future<List<dynamic>> fetchCustomerReservations() async {
+  final userid = await Session.getUserId();
+
+  try {
+    if (userid == null) {
+      print('API: fetchCustomerReservations -> userid is null, returning empty list');
+      return [];
+    }
+
+    print('API: Fetching customer reservations for userid: $userid');
+    final response = await http.get(
+      Uri.parse('$API_URL/cart?userid=$userid'),
+    );
+
+    print('API: Customer reservations response status: ${response.statusCode}');
+
+    if (response.statusCode == 404) {
+      print('API: No customer reservations found (404), returning empty list');
+      return [];
+    }
+
+    if (response.statusCode != 200) {
+      print('API: Unexpected status ${response.statusCode} from /cart, returning empty list');
+      return [];
+    }
+
+    final dynamic data = jsonDecode(response.body);
+    if (data is Map<String, dynamic>) {
+      if (data['reservations'] != null && data['reservations'] is List) {
+        print('API: Customer reservations count: ${(data['reservations'] as List).length}');
+        return data['reservations'] as List<dynamic>;
+      }
+    } else if (data is List) {
+      print('API: /cart responded with direct list, count: ${data.length}');
+      return data;
+    }
+
+    return [];
+  } catch (error) {
+    print('API error fetching customer reservations: $error');
     return [];
   }
 }
@@ -1260,19 +1306,28 @@ Future<Map<String, dynamic>> updateReservationStatus(int reservationid, String s
   final userid = await Session.getUserId();
   
   try {
+    print('API: Updating reservation status - reservationId: $reservationid, status: $status');
     final response = await http.patch(
       Uri.parse('$API_URL/updateReservationStatus/$reservationid?userid=$userid'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'reservationStatus': status}),
+    ).timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        print('API: updateReservationStatus timed out after 15 seconds');
+        throw TimeoutException('Request timed out after 15 seconds');
+      },
     );
 
+    print('API: updateReservationStatus response status: ${response.statusCode}');
     if (response.statusCode != 200) {
-      throw Exception('Failed to update reservation status');
+      print('API: updateReservationStatus failed with status ${response.statusCode}: ${response.body}');
+      throw Exception('Failed to update reservation status: ${response.statusCode}');
     }
 
     return jsonDecode(response.body);
   } catch (error) {
-    print('API error: $error');
+    print('API error updating reservation status: $error');
     rethrow;
   }
 }
@@ -1388,6 +1443,125 @@ Future<Map<String, dynamic>> fetchBookLog(int userid) async {
   }
 }
 
+// Fetch Book and Pay Logs (for admin/moderator/owner)
+Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
+  // Try different possible endpoint paths
+  final endpoints = [
+    '/book-and-pay-log',
+    '/users/book-and-pay-log',
+    '/booklog',
+    '/users/booklog',
+    '/book_and_pay_log',
+  ];
+
+  for (final endpoint in endpoints) {
+    try {
+      print('API: Trying endpoint: $endpoint?userid=$userid');
+      final response = await http.get(
+        Uri.parse('$API_URL$endpoint?userid=$userid'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+
+      print('API: Response status: ${response.statusCode}');
+      print('API: Response content-type: ${response.headers['content-type']}');
+
+      // Check if response is HTML (404 error page)
+      final contentType = response.headers['content-type'] ?? '';
+      final bodyStart = response.body.trim();
+      if (contentType.contains('text/html') || bodyStart.startsWith('<!DOCTYPE') || bodyStart.startsWith('<html')) {
+        print('API: Received HTML response (likely 404) from $endpoint, trying next endpoint...');
+        continue;
+      }
+
+      if (response.statusCode != 200) {
+        // Try to parse error message if it's JSON
+        try {
+          final errorData = jsonDecode(response.body);
+          print('API: Error response from $endpoint: ${errorData['message'] ?? 'Unknown error'}');
+          // Don't throw yet, try next endpoint
+          continue;
+        } catch (e) {
+          // If not JSON, it might be HTML or plain text
+          print('API: Non-200 status (${response.statusCode}) with non-JSON response from $endpoint, trying next endpoint...');
+          continue;
+        }
+      }
+
+      // Try to parse JSON
+      try {
+        // First, let's see what we're getting
+        final responseBody = response.body;
+        print('API: Response body length: ${responseBody.length}');
+        print('API: Response body preview (first 500 chars): ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
+        
+        final data = jsonDecode(responseBody);
+        print('API: Successfully parsed JSON response from $endpoint');
+        print('API: Response type: ${data.runtimeType}');
+        
+        // Handle different response formats - check List first to avoid index errors
+        if (data is List) {
+          print('API: Response is direct list with ${data.length} items');
+          try {
+            if (data.isNotEmpty) {
+              print('API: First item type: ${data[0].runtimeType}');
+              final firstItemStr = data[0].toString();
+              print('API: First item preview: ${firstItemStr.length > 100 ? firstItemStr.substring(0, 100) : firstItemStr}');
+            }
+          } catch (e) {
+            print('API: Error accessing first item: $e');
+          }
+          try {
+            return List<dynamic>.from(data); // Ensure it's a proper List
+          } catch (e) {
+            print('API: Error converting to List: $e');
+            // If conversion fails, try to return as-is if it's already a List
+            if (data is List) {
+              return data;
+            }
+            rethrow;
+          }
+        } else if (data is Map) {
+          print('API: Response is a Map with keys: ${data.keys.toList()}');
+          // If it's a Map, check for nested arrays
+          if (data.containsKey('bookAndPayLogs') && data['bookAndPayLogs'] is List) {
+            print('API: Found bookAndPayLogs with ${(data['bookAndPayLogs'] as List).length} items');
+            return List<dynamic>.from(data['bookAndPayLogs'] as List);
+          } else if (data.containsKey('logs') && data['logs'] is List) {
+            print('API: Found logs with ${(data['logs'] as List).length} items');
+            return List<dynamic>.from(data['logs'] as List);
+          }
+        }
+        print('API: Response format not recognized. Type: ${data.runtimeType}, returning empty list');
+        return [];
+      } catch (e, stackTrace) {
+        print('API: Failed to parse JSON from $endpoint: $e');
+        print('API: Stack trace: $stackTrace');
+        print('API: Response body preview (first 500 chars): ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
+        continue;
+      }
+    } catch (error) {
+      print('API: Error with endpoint $endpoint: $error');
+      // Continue to next endpoint
+      continue;
+    }
+  }
+
+  // If all endpoints failed, throw an error with helpful message
+  throw Exception(
+    'Failed to fetch book and pay logs: All endpoints returned errors.\n'
+    'Tried endpoints: ${endpoints.join(", ")}\n'
+    'Please ensure the backend endpoint is implemented.\n'
+    'Expected endpoint format: /book-and-pay-log?userid=$userid or /users/book-and-pay-log?userid=$userid'
+  );
+}
+
 // Fetch Finance 
 Future<Map<String, dynamic>> fetchFinance(int userid, {bool paidOnly = false}) async {
   try {
@@ -1410,6 +1584,40 @@ Future<Map<String, dynamic>> fetchFinance(int userid, {bool paidOnly = false}) a
   } catch (error) {
     print('API error fetching finance: $error');
     return {};
+  }
+}
+
+/// Fetch Average Revenue (pre-calculated on backend)
+/// Backend endpoint is expected to compute the average revenue for the user
+/// based on their role and return a JSON like:
+/// `{ "averageRevenue": 432.75 }`
+Future<double> fetchAverageRevenue(int userid) async {
+  try {
+    print('API: Fetching average revenue for userid: $userid');
+    final uri = Uri.parse('$API_URL/users/average_revenue?userid=$userid');
+    final response = await http.get(uri);
+
+    print('API: Average revenue response status: ${response.statusCode}');
+    if (response.statusCode != 200) {
+      print('API: Average revenue returned status ${response.statusCode}, defaulting to 0');
+      return 0.0;
+    }
+
+    final data = jsonDecode(response.body);
+    print('API: Average revenue response body: $data');
+
+    final dynamic value = data['averageRevenue'] ??
+        data['average_revenue'] ??
+        data['avgRevenue'] ??
+        data['avg_revenue'];
+
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  } catch (error) {
+    print('API error fetching average revenue: $error');
+    return 0.0;
   }
 }
 
@@ -1795,18 +2003,24 @@ Future<Map<String, dynamic>> googleLogin(String token) async {
       body: jsonEncode({'token': token}),
     );
 
-    if (response.statusCode != 200) {
+    print('API: Google login status: ${response.statusCode}');
+    print('API: Google login body: ${response.body}');
+
+    // Backend returns:
+    // - 200 for existing users
+    // - 201 for newly created users
+    if (response.statusCode != 200 && response.statusCode != 201) {
       final errorData = jsonDecode(response.body);
-      print("Server error response: $errorData");
-      throw Exception(errorData['message'] ?? "Google Login Failed");
+      print('API: Google login error response: $errorData');
+      throw Exception(errorData['message'] ?? 'Google Login Failed');
     }
 
-    final data = jsonDecode(response.body);
-        return data;
-    } catch (error) {
-    print("Error in Google Login: $error");
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data;
+  } catch (error) {
+    print('Error in Google Login: $error');
     rethrow;
-    }
+  }
 }
 
 // Google Map
@@ -2127,32 +2341,56 @@ Future<Map<String, dynamic>> createPayPalOrder({
       throw Exception('PayPal integration not available: Backend endpoint not found or returned HTML. Please check if /paypal/create-order endpoint exists.');
     }
 
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      try {
-        final errorData = jsonDecode(response.body);
-        final errorMsg = errorData['message'] ?? 'Failed to create PayPal order';
-        // Check if it's a PayPal configuration error
-        if (errorMsg.toLowerCase().contains('paypal') || 
-            errorMsg.toLowerCase().contains('client') ||
-            errorMsg.toLowerCase().contains('not configured')) {
-          throw Exception('PayPal integration not available: $errorMsg');
-        }
-        throw Exception(errorMsg);
-      } catch (e) {
-        // If e is already our custom exception, rethrow it
-        if (e.toString().contains('PayPal integration not available')) {
-          rethrow;
-        }
-        throw Exception('Failed to create PayPal order: ${response.statusCode} ${response.reasonPhrase}');
-      }
-    }
-
+    // Parse response
+    Map<String, dynamic> responseData;
     try {
-      return jsonDecode(response.body);
-    } catch (e) {
+      responseData = jsonDecode(response.body);
+      } catch (e) {
       print('API: Failed to parse JSON response: $e');
       throw Exception('Invalid JSON response from server');
     }
+
+    // Check for success field (backend returns success: true/false)
+    if (responseData['success'] == false || response.statusCode != 200 && response.statusCode != 201) {
+      final errorMsg = responseData['message'] ?? 'Failed to create PayPal order';
+      final errorDetail = responseData['error'] ?? '';
+      
+      // Check for PayPal authentication/configuration errors
+      final combinedError = '$errorMsg $errorDetail'.toLowerCase();
+      
+      // Check if error might be about missing owner PayPal email
+      if (combinedError.contains('owner') && combinedError.contains('paypal')) {
+        throw Exception(
+          'PayPal payment unavailable: The property owner has not set up their PayPal email. '
+          'Please contact the property owner to add their PayPal email in their profile settings.'
+        );
+      }
+      
+      // Detect specific PayPal authentication errors
+      if (combinedError.contains('invalid_client') || 
+          combinedError.contains('client authentication failed') ||
+          combinedError.contains('401')) {
+        // Owner PayPal email is verified as set, so this is a backend PayPal OAuth configuration issue
+        throw Exception(
+          'PayPal payment error: Backend PayPal authentication failed. '
+          'The backend PayPal Client ID and Secret may be missing or incorrect for the payment endpoint. '
+          'Please contact support to verify the backend PayPal configuration.'
+        );
+      }
+      
+      // Check for other PayPal configuration errors
+      if (combinedError.contains('paypal') || 
+          combinedError.contains('client') ||
+          combinedError.contains('not configured') ||
+          combinedError.contains('oauth')) {
+        throw Exception('PayPal integration not available: $errorMsg${errorDetail.isNotEmpty ? ' - $errorDetail' : ''}');
+      }
+      
+      throw Exception(errorMsg);
+    }
+
+    // Return successful response (backend returns success: true with orderId, approvalUrl, etc.)
+    return responseData;
   } catch (error) {
     print('API error creating PayPal order: $error');
     rethrow;
@@ -2186,21 +2424,21 @@ Future<Map<String, dynamic>> capturePayPalOrder({
       throw Exception('Backend endpoint not found or returned HTML. Please check if /paypal/capture-order endpoint exists.');
     }
 
-    if (response.statusCode != 200) {
+    // Parse response
+    Map<String, dynamic> responseData;
       try {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to capture PayPal order');
+      responseData = jsonDecode(response.body);
       } catch (e) {
-        throw Exception('Failed to capture PayPal order: ${response.statusCode} ${response.reasonPhrase}');
-      }
-    }
-
-    try {
-      return jsonDecode(response.body);
-    } catch (e) {
-      print('API: Failed to parse JSON response: $e');
       throw Exception('Invalid JSON response from server');
     }
+
+    // Check for success field (backend returns success: true/false)
+    if (responseData['success'] == false || response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(responseData['message'] ?? 'Failed to capture PayPal order');
+    }
+
+    // Return successful response
+    return responseData;
   } catch (error) {
     print('API error capturing PayPal order: $error');
     rethrow;
@@ -2210,25 +2448,34 @@ Future<Map<String, dynamic>> capturePayPalOrder({
 // Payment Successful Notification
 Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
+  final username = 'user_${creatorid ?? 0}'; 
   final creatorUsername = username;
   
   try {
+    print('API: Sending payment success notification - reservationId: $reservationid');
     final response = await http.post(
       Uri.parse('$API_URL/payment_success/$reservationid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
       headers: {
         'Content-Type': 'application/json',
       },
+    ).timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        print('API: paymentSuccess timed out after 15 seconds');
+        throw TimeoutException('Request timed out after 15 seconds');
+      },
     );
 
+    print('API: paymentSuccess response status: ${response.statusCode}');
     if (response.statusCode != 200) {
+      print('API: paymentSuccess failed with status ${response.statusCode}: ${response.body}');
       final errorData = jsonDecode(response.body);
       throw Exception(errorData['message'] ?? 'Failed to send payment successful notification');
     }
 
     return jsonDecode(response.body);
   } catch (error) {
-    print('API error: $error');
+    print('API error sending payment success notification: $error');
     rethrow;
   }
 }

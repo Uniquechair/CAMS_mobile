@@ -8,6 +8,7 @@ import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../api.dart' as api;
 import 'admin_notification.dart';
+import '../shared_admin_moderator/user_management.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -33,6 +34,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   double _occupancyRate = 0.0;
   double _revPAR = 0.0;
   double _totalRevenue = 0.0;
+  double _averageRevenue = 0.0;
   double _guestSatisfaction = 0.0;
   bool _isLoadingStats = false; // Start as false to show numbers immediately
   bool _isProcessingApproval = false;
@@ -282,6 +284,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
         print('AdminDashboard: Total revenue loaded: $_totalRevenue');
       } catch (error) {
         print('AdminDashboard: Error fetching revenue: $error');
+      }
+
+      // Fetch Average Revenue (from backend)
+      try {
+        final avgRevenue = await api.fetchAverageRevenue(userid);
+        if (mounted) {
+          setState(() {
+            _averageRevenue = avgRevenue;
+          });
+        }
+        print('AdminDashboard: Average revenue loaded: $_averageRevenue');
+      } catch (error) {
+        print('AdminDashboard: Error fetching average revenue: $error');
       }
 
       // Fetch Guest Satisfaction
@@ -568,6 +583,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
       Navigator.of(context).pushNamed('/manage-booking');
       return;
     }
+    if (label == 'AuditTrails') {
+      Navigator.of(context).pushNamed('/admin-audit-trails');
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      Navigator.of(context).pushNamed('/admin-book-and-pay');
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
@@ -670,6 +693,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             icon: Icons.trending_up,
             iconColor: const Color(0xFF8B5CF6),
             route: '/occupancy',
+            showButton: false,
           ),
         );
         cards.add(
@@ -679,6 +703,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             icon: Icons.account_balance_wallet,
             iconColor: const Color(0xFF8B5CF6),
             route: '/revpar',
+            showButton: false,
           ),
         );
         cards.add(
@@ -688,6 +713,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
             icon: Icons.attach_money,
             iconColor: const Color(0xFF10B981),
             route: '/revenue',
+            showButton: false,
+          ),
+        );
+        // Average Revenue card
+        cards.add(
+          _buildStatCard(
+            title: 'Average Revenue',          
+            value: 'MYR ${_averageRevenue.toStringAsFixed(2)}',           
+            icon: Icons.pie_chart_outline,  
+            iconColor: const Color(0xFF3B82F6),
+            route: '/average-revenue',
+            showButton: false, // NEW
           ),
         );
         cards.add(
@@ -697,6 +734,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             icon: Icons.bar_chart,
             iconColor: const Color(0xFFEF4444),
             route: '/satisfaction',
+            showButton: false,
           ),
         );
         break;
@@ -719,6 +757,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     required IconData icon,
     required Color iconColor,
     required String route,
+    bool showButton = true, 
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -761,28 +800,44 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ],
             ),
             const Spacer(),
-            Text(
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
               value,
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF1E293B),
+                ),
+                maxLines: 1,
               ),
             ),
             const SizedBox(height: 12),
+            if (showButton) 
             SizedBox(
               width: double.infinity,
+              height: 40,
               child: ElevatedButton(
                 onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Navigating to $title page', style: TextStyle(color: Colors.black)),
-                      backgroundColor: const Color(0xFF468FAF),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                  if (route == '/manage-services') {
+                  if (route == '/users') {
+                    Navigator.pushNamed(
+                      context,
+                      '/user-management',
+                      arguments: AppRole.admin,
+                    );
+                  } else if (route == '/properties' || route == '/manage-services') {
                     Navigator.pushNamed(context, '/manage-services');
+                  } else if (route == '/reservations' || route == '/manage-booking') {
+                    Navigator.pushNamed(context, '/manage-booking');
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Navigating to $title page', style: const TextStyle(color: Colors.black)),
+                        backgroundColor: const Color(0xFF468FAF),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -1138,7 +1193,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).pushNamed('/manage-booking');
-                  },
+                        },
                   child: const Text(
                     'View All',
                     style: TextStyle(
@@ -1225,11 +1280,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       subtitle: Text(
         propertyName.toString(),
-        style: const TextStyle(
-          color: Color(0xFF64748B),
-          fontSize: 13,
-        ),
-      ),
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+            ),
+          ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -1301,7 +1356,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        children: [
             _buildDetailRow('Customer', customerName.toString()),
             _buildDetailRow('Property', propertyName.toString()),
             _buildDetailRow('Check-in', checkIn.toString()),

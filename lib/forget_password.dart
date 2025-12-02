@@ -49,7 +49,9 @@ class AuthScaffold extends StatelessWidget {
                     foregroundColor: kPrimaryBlue,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
-                  onPressed: onBack ?? () => Navigator.pop(context),
+                  onPressed: onBack ?? () {
+                    Navigator.pushReplacementNamed(context, '/login');
+                  },
                   icon: const Icon(Icons.arrow_back, size: 18),
                   label: Text(backLabel),
                 ),
@@ -289,7 +291,9 @@ class PasswordResetCompletePage extends StatelessWidget {
           _primaryButton(
             context,
             label: 'Back to Login',
-            onPressed: () => Navigator.popUntil(context, (r) => r.isFirst),
+            onPressed: () {
+              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+            },
           ),
         ],
       ),

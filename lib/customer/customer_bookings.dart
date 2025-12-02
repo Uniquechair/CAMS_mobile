@@ -33,10 +33,13 @@ class _CustomerBookingsState extends State<CustomerBookings> {
     });
 
     try {
-      final bookingsData = await api.fetchReservation();
+      // Fetch reservations only for this customer via dedicated /cart endpoint
+      final bookingsData = await api.fetchCustomerReservations();
       
       List<Map<String, dynamic>> loadedBookings = [];
       for (var booking in bookingsData) {
+        if (booking is! Map<String, dynamic>) continue;
+
         // Include all reservations in bookings page (including pending)
         // The cart page will filter out pending ones for its history section
         

@@ -1,0 +1,2 @@
+D:/Document Computer Science/fyp/CAMS_mobile/build/.cxx/debug/x3r1w272/x86_64/CMakeFiles/edit_cache.dir
+D:/Document Computer Science/fyp/CAMS_mobile/build/.cxx/debug/x3r1w272/x86_64/CMakeFiles/rebuild_cache.dir

@@ -1251,6 +1251,18 @@ class _OwnerManageOperatorsState extends State<OwnerManageOperators> {
       Navigator.of(context).pushNamed('/profile');
       return;
     }
+    if (label == 'AuditTrails') {
+      Navigator.of(context).pushNamed('/owner-audit-trails');
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      Navigator.of(context).pushNamed('/owner-book-and-pay');
+      return;
+    }
+    if (label == 'Cluster') {
+      Navigator.of(context).pushNamed('/owner-cluster');
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),

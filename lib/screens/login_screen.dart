@@ -42,7 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
         scopes: ['email', 'profile'],
       );
 
-      // Sign in with Google
+      // Always sign out first so the account chooser is shown every time
+      // (especially after the user has logged out of the app).
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {
+        // Ignore signOut errors; we just want to clear any cached session.
+      }
+
+      // Sign in with Google (will now show the account picker)
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -59,17 +67,18 @@ class _LoginScreenState extends State<LoginScreen> {
       // Get authentication details
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       
-      // Get the ID token
-      final String? idToken = googleAuth.idToken;
+      // Website backend expects an access token (used as Bearer to call Google userinfo),
+      // so mirror that behaviour here.
+      final String? accessToken = googleAuth.accessToken;
       
-      if (idToken == null) {
-        throw Exception('Failed to get Google ID token');
+      if (accessToken == null) {
+        throw Exception('Failed to get Google access token');
       }
 
-      print('DEBUG: Got Google ID token, sending to backend');
+      print('DEBUG: Got Google access token, sending to backend');
 
-      // Send token to backend
-      final response = await api.googleLogin(idToken);
+      // Send token to backend (same as website)
+      final response = await api.googleLogin(accessToken);
       
       print('DEBUG: Google Login API response: $response');
 
@@ -122,19 +131,41 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       print('DEBUG: Google Sign-In error: $e');
+      String errorMessage = 'Google Sign-In failed';
+      
+      // Parse error message to provide helpful guidance
+      final errorString = e.toString();
+      if (errorString.contains('PlatformException') && 
+          errorString.contains('sign_in_failed')) {
+        errorMessage = 'Google Sign-In configuration error. Please ensure:\n'
+            '1. SHA-1 fingerprint is registered in Google Cloud Console\n'
+            '2. OAuth client ID is configured for Android\n'
+            '3. Package name matches: com.example.cams_frontend';
+      } else if (errorString.contains('network') || errorString.contains('Network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (errorString.contains('ApiException') || errorString.contains('Api10')) {
+        errorMessage = 'Google Sign-In API error. Please check:\n'
+            '1. Google Play Services is installed and updated\n'
+            '2. SHA-1 fingerprint is registered in Google Cloud Console\n'
+            '3. OAuth client is properly configured';
+      } else {
+        errorMessage = errorString.replaceAll('Exception: ', '')
+            .replaceAll('PlatformException: ', '');
+      }
+      
       if (mounted) {
         setState(() {
-          _msg = e.toString().replaceAll('Exception: ', '');
+          _msg = errorMessage;
           _googleLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _msg ?? 'Google Sign-In failed',
+              errorMessage,
               style: const TextStyle(color: Colors.white),
             ),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
           ),
         );
       }

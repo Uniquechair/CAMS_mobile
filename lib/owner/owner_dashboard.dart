@@ -7,6 +7,7 @@ import '../shared/bottom_navigation_bar.dart';
 import '../app.dart';
 import 'owner_property_listing.dart';
 import 'owner_reservation.dart';
+import 'owner_manage_customer.dart';
 
 class OwnerDashboard extends StatefulWidget {
   const OwnerDashboard({super.key});
@@ -32,6 +33,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   double _occupancyRate = 0.0;
   double _revPAR = 0.0;
   double _totalRevenue = 0.0;
+  double _averageRevenue = 0.0;
   double _guestSatisfaction = 0.0;
   int _totalClusters = 0;
   bool _isLoadingStats = false;
@@ -252,6 +254,19 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         print('OwnerDashboard: Total revenue loaded: $_totalRevenue');
       } catch (error) {
         print('OwnerDashboard: Error fetching revenue: $error');
+      }
+
+      // Fetch Average Revenue (from backend)
+      try {
+        final avgRevenue = await api.fetchAverageRevenue(userid);
+        if (mounted) {
+          setState(() {
+            _averageRevenue = avgRevenue;
+          });
+        }
+        print('OwnerDashboard: Average revenue loaded: $_averageRevenue');
+      } catch (error) {
+        print('OwnerDashboard: Error fetching average revenue: $error');
       }
 
       try {
@@ -484,7 +499,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             value: '$_totalUsers',
             icon: Icons.people_outline,
             iconColor: const Color(0xFF8B5CF6),
-            route: '/users',
+            route: '/owner-manage-customer',
           ),
         );
         break;
@@ -497,7 +512,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             value: '$_totalProperties',
             icon: Icons.apartment,
             iconColor: const Color(0xFF10B981),
-            route: '/properties',
+            route: '/owner-property-listing',
           ),
         );
         cards.add(
@@ -506,7 +521,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             value: '$_totalReservations',
             icon: Icons.calendar_today,
             iconColor: const Color(0xFF3B82F6),
-            route: '/reservations',
+            route: '/owner-reservation',
           ),
         );
         break;
@@ -520,6 +535,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             icon: Icons.trending_up,
             iconColor: const Color(0xFF8B5CF6),
             route: '/occupancy',
+            showButton: false,
           ),
         );
         cards.add(
@@ -529,6 +545,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             icon: Icons.account_balance_wallet,
             iconColor: const Color(0xFF8B5CF6),
             route: '/revpar',
+            showButton: false,
           ),
         );
         cards.add(
@@ -538,6 +555,18 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             icon: Icons.attach_money,
             iconColor: const Color(0xFF10B981),
             route: '/revenue',
+            showButton: false,
+          ),
+        );
+        // Average Revenue card
+        cards.add(
+          _buildStatCard(
+            title: 'Average Revenue',          
+            value: 'MYR ${_averageRevenue.toStringAsFixed(2)}',           
+            icon: Icons.pie_chart_outline,  
+            iconColor: const Color(0xFF3B82F6),
+            route: '/average-revenue',
+            showButton: false, 
           ),
         );
         cards.add(
@@ -547,6 +576,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             icon: Icons.bar_chart,
             iconColor: const Color(0xFFEF4444),
             route: '/satisfaction',
+            showButton: false,
           ),
         );
         break;
@@ -559,7 +589,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             value: '$_totalClusters',
             icon: Icons.location_on_outlined,
             iconColor: const Color(0xFFEF4444),
-            route: '/clusters',
+            route: '/owner-cluster',
           ),
         );
         break;
@@ -582,6 +612,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     required IconData icon,
     required Color iconColor,
     required String route,
+    bool showButton = true,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -624,26 +655,27 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               ],
             ),
             const Spacer(),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+                maxLines: 1,
               ),
             ),
             const SizedBox(height: 12),
+            if (showButton)
             SizedBox(
               width: double.infinity,
+              height: 40,
               child: ElevatedButton(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Navigating to $title page', style: const TextStyle(color: Colors.black)),
-                      backgroundColor: const Color(0xFF468FAF),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
+                  Navigator.of(context).pushNamed(route);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0077B6),
@@ -736,6 +768,18 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     }
     if (label == 'Moderator/Admin') {
       Navigator.of(context).pushNamed('/owner-manage-moderatoradmin');
+      return;
+    }
+    if (label == 'AuditTrails') {
+      Navigator.of(context).pushNamed('/owner-audit-trails');
+      return;
+    }
+    if (label == 'BooknPayLog') {
+      Navigator.of(context).pushNamed('/owner-book-and-pay');
+      return;
+    }
+    if (label == 'Cluster') {
+      Navigator.of(context).pushNamed('/owner-cluster');
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(

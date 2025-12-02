@@ -132,34 +132,6 @@ class _SignupScreenState extends State<SignupScreen> {
                             controller: _password, label: 'Password', obscure: true,
                             validator: (v) => (v == null || v.length < 6) ? 'Min 6 characters' : null,
                           ),
-                          const SizedBox(height: 12),
-                          // Role field - fixed to Customer only
-                          Theme(
-                            data: Theme.of(context).copyWith(
-                              textSelectionTheme: const TextSelectionThemeData(
-                                cursorColor: Color(0xFF0077B6),
-                                selectionColor: Color(0xFFB3D9FF),
-                                selectionHandleColor: Color(0xFF0077B6),
-                              ),
-                            ),
-                            child: TextFormField(
-                              initialValue: 'Customer',
-                              enabled: false,
-                              decoration: InputDecoration(
-                                labelText: 'User Role',
-                                labelStyle: const TextStyle(color: Color(0xFF0077B6)),
-                                floatingLabelStyle: const TextStyle(color: Color(0xFF0077B6)),
-                                disabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF0077B6)),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade100,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              ),
-                              style: const TextStyle(color: Colors.black54),
-                            ),
-                          ),
                           const SizedBox(height: 16),
                           if (_msg != null)
                             Text(_msg!, style: TextStyle(color: _msg!.toLowerCase().contains('success') ? Colors.green : Colors.red)),
